@@ -2,10 +2,11 @@ package main
 
 import (
 	"walletwise/database"
+	"walletwise/internal/infrastructure/postgres"
 )
 
 func main() {
-	DB := database.InitDatabase()
+	DB := postgres.InitDatabase()
 	database.NewHandler(DB)
 
 	//userRepo := repositories.NewUserRepository(DB)
