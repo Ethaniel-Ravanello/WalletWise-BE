@@ -33,7 +33,6 @@ type Transaction struct {
 }
 
 func NewTransaction(
-	id TransactionId,
 	userID uint64,
 	goalID uint64,
 	amount Money,
@@ -43,15 +42,11 @@ func NewTransaction(
 	transactionSource string,
 	transactionDate time.Time,
 ) (*Transaction, error) {
-	if id <= 0 {
-		return nil, errors.New("transaction id cannot be empty")
-	}
-
 	if userID == 0 {
 		return nil, errors.New("user id required")
 	}
 
-	if amount <= 0 {
+	if amount != 0 {
 		return nil, errors.New("amount cannot be zero or negative")
 	}
 
@@ -71,7 +66,6 @@ func NewTransaction(
 	}
 
 	return &Transaction{
-		id:                id,
 		userID:            userID,
 		goalID:            goalID,
 		amount:            amount,
@@ -83,6 +77,45 @@ func NewTransaction(
 		createdAt:         time.Now(),
 		updatedAt:         time.Now(),
 	}, nil
+}
+
+func (t *Transaction) UpdateDetails(
+	goalID uint64,
+	amount Money,
+	category string,
+	description string,
+	transactionType Type,
+	transactionSource string,
+	transactionDate time.Time) error {
+
+	if goalID <= 0 {
+		return errors.New("goal id required")
+	}
+	if amount <= 0 {
+		return errors.New("amount cannot be zero or negative")
+	}
+	if !transactionType.IsValid() {
+		return errors.New("invalid transaction type")
+	}
+	if category == "" {
+		return errors.New("category required")
+	}
+	if transactionSource == "" {
+		return errors.New("source required")
+	}
+	if transactionDate.After(time.Now()) {
+		return errors.New("date cannot be in future")
+	}
+	t.goalID = goalID
+	t.amount = amount
+	t.category = category
+	t.description = description
+	t.transactionType = transactionType
+	t.transactionSource = transactionSource
+	t.transactionDate = transactionDate
+	t.updatedAt = time.Now()
+
+	return nil
 }
 
 func Reconstitute(

@@ -34,12 +34,16 @@ func (t *TransactionRepo) Search(ctx context.Context, filter transaction.FilterT
 		q += " AND category = ?"
 		args = append(args, *filter.Category)
 	}
+	if filter.Types != nil {
+		q += " AND transaction_type >= ?"
+		args = append(args, *filter.Types)
+	}
 	if filter.StartDate != nil {
-		q += " AND date >= ?"
+		q += " AND transaction_date >= ?"
 		args = append(args, *filter.StartDate)
 	}
 	if filter.EndDate != nil {
-		q += " AND date <= ?"
+		q += " AND transaction_date <= ?"
 		args = append(args, *filter.EndDate)
 	}
 	q += " ORDER BY transaction_date DESC"
@@ -281,9 +285,11 @@ func (t *TransactionRepo) Save(ctx context.Context, tx *transaction.Transaction)
 }
 
 func (t *TransactionRepo) Update(ctx context.Context, tx *transaction.Transaction) error {
-	const q = `UPDATE transactions SET amount=?, category=?, description=?, transaction_type=?, transaction_source=?, transaction_date=?, updated_at=? WHERE id = ?`
+	const q = `UPDATE transactions SET userId=?, goalId=?, amount=?, category=?, description=?, transaction_type=?, transaction_source=?, transaction_date=?, updated_at=? WHERE id = ?`
 
 	_, err := t.db.ExecContext(ctx, q,
+		tx.UserID(),
+		tx.GoalID(),
 		tx.Amount(),
 		tx.Category(),
 		tx.Description(),
