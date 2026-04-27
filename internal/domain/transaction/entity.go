@@ -5,60 +5,62 @@ import (
 	"time"
 )
 
-type TransactionId uint64
-type Type string
+type TransactionID uint64
+type UserID uint64
+type GoalID uint64
+type CategoryID uint64
+type TransactionType string
+type WalletID uint64
 type Money int64
 
 const (
-	Debit  Type = "DEBIT"
-	Credit Type = "CREDIT"
+	Income  TransactionType = "income"
+	Expense TransactionType = "expense"
+	Saving  TransactionType = "saving"
 )
 
-func (t Type) IsValid() bool {
-	return t == Debit || t == Credit
+func (t TransactionType) IsValid() bool {
+	return t == Income || t == Expense || t == Saving
 }
 
 type Transaction struct {
-	id                TransactionId
-	userID            uint64
-	goalID            uint64
-	amount            Money
-	category          string
-	description       string
-	transactionType   Type
-	transactionSource string
-	transactionDate   time.Time
-	createdAt         time.Time
-	updatedAt         time.Time
+	id              TransactionID   `json:"id"`
+	userID          UserID          `json:"user_id"`
+	goalID          *GoalID         `json:"goal_id,omitempty"`
+	amount          Money           `json:"amount"`
+	categoryID      CategoryID      `json:"category_id"`
+	description     string          `json:"description"`
+	transactionType TransactionType `json:"transaction_type"`
+	walletID        WalletID        `json:"wallet_id"`
+	transactionDate time.Time       `json:"transaction_date"`
+	createdAt       time.Time       `json:"created_at"`
+	updatedAt       time.Time       `json:"updated_at"`
 }
 
 func NewTransaction(
-	userID uint64,
-	goalID uint64,
+	userID UserID,
+	goalID *GoalID,
 	amount Money,
-	category string,
+	categoryId CategoryID,
 	description string,
-	transactionType Type,
-	transactionSource string,
+	transactionType TransactionType,
+	walletID WalletID,
 	transactionDate time.Time,
 ) (*Transaction, error) {
 	if userID == 0 {
 		return nil, errors.New("user id required")
 	}
-
-	if amount != 0 {
+	if amount <= 0 {
 		return nil, errors.New("amount cannot be zero or negative")
 	}
-
 	if !transactionType.IsValid() {
 		return nil, errors.New("invalid transaction type")
 	}
-
-	if category == "" {
+	if categoryId <= 0 {
 		return nil, errors.New("category required")
 	}
-	if transactionSource == "" {
-		return nil, errors.New("source required")
+	if walletID <= 0 {
+		return nil, errors.New("wallet id required")
 	}
 
 	if transactionDate.After(time.Now()) {
@@ -66,52 +68,49 @@ func NewTransaction(
 	}
 
 	return &Transaction{
-		userID:            userID,
-		goalID:            goalID,
-		amount:            amount,
-		category:          category,
-		description:       description,
-		transactionType:   transactionType,
-		transactionSource: transactionSource,
-		transactionDate:   transactionDate,
-		createdAt:         time.Now(),
-		updatedAt:         time.Now(),
+		userID:          userID,
+		goalID:          goalID,
+		amount:          amount,
+		categoryID:      categoryId,
+		description:     description,
+		transactionType: transactionType,
+		walletID:        walletID,
+		transactionDate: transactionDate,
+		createdAt:       time.Now(),
+		updatedAt:       time.Now(),
 	}, nil
 }
 
 func (t *Transaction) UpdateDetails(
-	goalID uint64,
+	goalID *GoalID,
 	amount Money,
-	category string,
+	categoryId CategoryID,
 	description string,
-	transactionType Type,
-	transactionSource string,
+	transactionType TransactionType,
+	walletID WalletID,
 	transactionDate time.Time) error {
 
-	if goalID <= 0 {
-		return errors.New("goal id required")
-	}
 	if amount <= 0 {
 		return errors.New("amount cannot be zero or negative")
 	}
 	if !transactionType.IsValid() {
 		return errors.New("invalid transaction type")
 	}
-	if category == "" {
+	if categoryId <= 0 {
 		return errors.New("category required")
 	}
-	if transactionSource == "" {
-		return errors.New("source required")
+	if walletID <= 0 {
+		return errors.New("wallet id  required")
 	}
 	if transactionDate.After(time.Now()) {
 		return errors.New("date cannot be in future")
 	}
 	t.goalID = goalID
 	t.amount = amount
-	t.category = category
+	t.categoryID = categoryId
 	t.description = description
 	t.transactionType = transactionType
-	t.transactionSource = transactionSource
+	t.walletID = walletID
 	t.transactionDate = transactionDate
 	t.updatedAt = time.Now()
 
@@ -119,72 +118,75 @@ func (t *Transaction) UpdateDetails(
 }
 
 func Reconstitute(
-	id TransactionId,
-	userId, goalId uint64,
+	id TransactionID,
+	userId UserID,
+	goalId *GoalID,
 	amount Money,
-	category string,
+	categoryid CategoryID,
 	description string,
-	transactionType Type,
-	transactionSource string,
+	transactionType TransactionType,
+	walletID WalletID,
 	transactionDate, createdAt, updatedAt time.Time,
 ) *Transaction {
 	return &Transaction{
-		id:                id,
-		userID:            userId,
-		goalID:            goalId,
-		amount:            amount,
-		category:          category,
-		description:       description,
-		transactionType:   transactionType,
-		transactionSource: transactionSource,
-		transactionDate:   transactionDate,
-		createdAt:         createdAt,
-		updatedAt:         updatedAt,
+		id:              id,
+		userID:          userId,
+		goalID:          goalId,
+		amount:          amount,
+		categoryID:      categoryid,
+		description:     description,
+		transactionType: transactionType,
+		walletID:        walletID,
+		transactionDate: transactionDate,
+		createdAt:       createdAt,
+		updatedAt:       updatedAt,
 	}
 }
 
-func (t *Transaction) ID() TransactionId {
+func (t *Transaction) ID() TransactionID {
 	return t.id
 }
 
-func (t *Transaction) UserID() uint64 {
+func (t *Transaction) UserID() UserID {
 	return t.userID
 }
 
-func (t *Transaction) GoalID() uint64 { return t.goalID }
+func (t *Transaction) GoalID() *GoalID { return t.goalID }
 
 func (t *Transaction) Amount() Money {
 	return t.amount
 }
 
-func (t *Transaction) Category() string {
-	return t.category
+func (t *Transaction) CategoryID() CategoryID {
+	return t.categoryID
 }
 
 func (t *Transaction) Description() string {
 	return t.description
 }
 
-func (t *Transaction) TransactionType() Type {
+func (t *Transaction) TransactionType() TransactionType {
 	return t.transactionType
 }
 
-func (t *Transaction) TransactionSource() string { return t.transactionSource }
+func (t *Transaction) WalletID() string { return t.WalletID() }
 
 func (t *Transaction) TransactionDate() time.Time {
 	return t.transactionDate
 }
 
-func (t *Transaction) IsDebit() bool {
-	return t.transactionType == Debit
+func (t *Transaction) IsIncome() bool {
+	return t.transactionType == Income
 }
 
-func (t *Transaction) IsCredit() bool {
-	return t.transactionType == Credit
+func (t *Transaction) IsExpense() bool {
+	return t.transactionType == Expense
 }
+
+func (t *Transaction) IsSaving() bool { return t.transactionType == Saving }
 
 func (t *Transaction) SignedAmount() int64 {
-	if t.IsDebit() {
+	if t.IsIncome() {
 		return int64(t.amount)
 	}
 	return -int64(t.amount)

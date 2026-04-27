@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 	"walletwise/internal/domain/transaction"
 )
@@ -19,87 +20,107 @@ func NewTransactionRepo(db *sql.DB) *TransactionRepo {
 var _ transaction.Repository = (*TransactionRepo)(nil)
 
 func (t *TransactionRepo) Search(ctx context.Context, filter transaction.FilterTrx) ([]*transaction.Transaction, error) {
-	q := `SELECT id,user_id, goal_id, amount, category, description, transaction_type, transaction_source, transaction_date, created_at, updated_at FROM transactions
-				WHERE user_id = ?`
+	var counter = 1
+	q := fmt.Sprintf("SELECT id, user_id, goal_id, category_id, amount, description, transaction_type, wallet_id, transaction_date, created_at, updated_at FROM transactions WHERE user_id = $%d", counter)
 	args := []interface{}{filter.UserID}
+	counter++
+
 	if filter.GoalID != nil {
-		q += " AND goal_id = ?"
+		q += fmt.Sprintf(" AND goal_id = $%d", counter)
 		args = append(args, *filter.GoalID)
+		counter++
 	}
 	if filter.Amount != nil {
-		q += " AND amount = ?"
+		q += fmt.Sprintf(" AND amount = $%d", counter)
 		args = append(args, *filter.Amount)
+		counter++
 	}
-	if filter.Category != nil {
-		q += " AND category = ?"
-		args = append(args, *filter.Category)
+	if filter.CategoryId != nil {
+		q += fmt.Sprintf(" AND category_id  = $%d", counter)
+		args = append(args, *filter.CategoryId)
+		counter++
 	}
-	if filter.Types != nil {
-		q += " AND transaction_type >= ?"
-		args = append(args, *filter.Types)
+	if filter.TransactionTypes != nil {
+		q += fmt.Sprintf(" AND transaction_type = $%d", counter)
+		args = append(args, *filter.TransactionTypes)
+		counter++
 	}
 	if filter.StartDate != nil {
-		q += " AND transaction_date >= ?"
+		q += fmt.Sprintf(" AND transaction_date >= $%d", counter)
 		args = append(args, *filter.StartDate)
+		counter++
 	}
 	if filter.EndDate != nil {
-		q += " AND transaction_date <= ?"
+		q += fmt.Sprintf(" AND transaction_date <= $%d", counter)
 		args = append(args, *filter.EndDate)
+		counter++
+	}
+	if filter.WalletID != nil {
+		q += fmt.Sprintf(" AND wallet_id = $%d", counter)
 	}
 	q += " ORDER BY transaction_date DESC"
 	if filter.Limit > 0 {
-		q += " LIMIT ?"
+		q += fmt.Sprintf(" LIMIT $%d", counter)
 		args = append(args, filter.Limit)
+		counter++
 	}
 
 	rows, err := t.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, errors.New("Error Getting Data: " + err.Error())
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			return
+		}
+	}(rows)
 	var transactions []*transaction.Transaction
 
 	var (
-		id                 transaction.TransactionId
-		user_id, goal_id   uint64
-		amount             int64
-		category           string
-		description        string
-		transaction_type   string
-		transaction_source string
-		transaction_date   time.Time
-		created_at         time.Time
-		updated_at         time.Time
+		id, userID                            uint64
+		goalIDNull                            sql.NullInt64
+		amount                                int64
+		categoryID                            uint64
+		description, transactionType          string
+		walletID                              uint64
+		transactionDate, createdAt, updatedAt time.Time
 	)
 
 	for rows.Next() {
 		if err = rows.Scan(
 			&id,
-			&user_id,
-			&goal_id,
+			&userID,
+			&goalIDNull,
 			&amount,
-			&category,
+			&categoryID,
 			&description,
-			&transaction_type,
-			&transaction_source,
-			&transaction_date,
-			&created_at,
-			&updated_at,
+			&transactionType,
+			&walletID,
+			&transactionDate,
+			&createdAt,
+			&updatedAt,
 		); err != nil {
 			return nil, errors.New("Error Getting Data: " + err.Error())
 		}
+
+		var finalGoalID *transaction.GoalID
+		if goalIDNull.Valid {
+			val := transaction.GoalID(goalIDNull.Int64)
+			finalGoalID = &val
+		}
 		trx := transaction.Reconstitute(
-			id,
-			user_id,
-			goal_id,
+			transaction.TransactionID(id),
+			transaction.UserID(userID),
+			finalGoalID,
 			transaction.Money(amount),
-			category,
+			transaction.CategoryID(categoryID),
 			description,
-			transaction.Type(transaction_type),
-			transaction_source,
-			transaction_date,
-			created_at,
-			updated_at,
+			transaction.TransactionType(transactionType),
+			transaction.WalletID(walletID),
+			transactionDate,
+			createdAt,
+			updatedAt,
 		)
 		transactions = append(transactions, trx)
 	}
@@ -109,32 +130,32 @@ func (t *TransactionRepo) Search(ctx context.Context, filter transaction.FilterT
 	return transactions, nil
 }
 
-func (t *TransactionRepo) SearchByID(ctx context.Context, trxId transaction.TransactionId) (*transaction.Transaction, error) {
-	const q = `SELECT id,user_id, goal_id, amount, category, description, transaction_type, transaction_source, transaction_date, created_at, updated_at FROM transactions
-				WHERE id = ?`
+func (t *TransactionRepo) SearchByID(ctx context.Context, trxId transaction.TransactionID) (*transaction.Transaction, error) {
+	const q = `SELECT id, user_id, goal_id, category_id, amount, description, transaction_type, wallet_id, transaction_date, created_at, updated_at FROM transactions
+				WHERE id = $1`
 
 	var (
-		trxID                                  transaction.TransactionId
-		userID, goalID                         uint64
-		amount                                 int64
-		category, desc                         string
-		transaction_type                       string
-		transaction_source                     string
-		transaction_date, createdAt, updatedAt time.Time
+		transactionID, userID                 uint64
+		goalIDNull                            sql.NullInt64
+		amount                                int64
+		categoryID                            uint64
+		description, transactionType          string
+		walletID                              uint64
+		transactionDate, createdAt, updatedAt time.Time
 	)
 
 	row := t.db.QueryRowContext(ctx, q, trxId)
 
 	err := row.Scan(
-		&trxID,
+		&transactionID,
 		&userID,
-		&goalID,
+		&goalIDNull,
 		&amount,
-		&category,
-		&desc,
-		&transaction_type,
-		&transaction_source,
-		&transaction_date,
+		&categoryID,
+		&description,
+		&transactionType,
+		&walletID,
+		&transactionDate,
 		&createdAt,
 		&updatedAt,
 	)
@@ -143,81 +164,86 @@ func (t *TransactionRepo) SearchByID(ctx context.Context, trxId transaction.Tran
 			return nil, errors.New("Transaction not found")
 		}
 	}
+	var finalGoalID *transaction.GoalID
+	if goalIDNull.Valid {
+		val := transaction.GoalID(goalIDNull.Int64)
+		finalGoalID = &val
+	}
 	trx := transaction.Reconstitute(
-		trxID,
-		userID,
-		goalID,
+		transaction.TransactionID(transactionID),
+		transaction.UserID(userID),
+		finalGoalID,
 		transaction.Money(amount),
-		category,
-		desc,
-		transaction.Type(transaction_type),
-		transaction_source,
-		transaction_date,
+		transaction.CategoryID(categoryID),
+		description,
+		transaction.TransactionType(transactionType),
+		transaction.WalletID(walletID),
+		transactionDate,
 		createdAt,
 		updatedAt,
 	)
 	return trx, nil
 }
 
-func (t *TransactionRepo) GetBalance(ctx context.Context, userId uint64) (transaction.Money, error) {
-	const q = `SELECT COALESCE(SUM(CASE WHEN type = 'DEBIT' then amount
-    								WHEN type = 'CREDIT' then -amount), 0) 
+func (t *TransactionRepo) GetBalance(ctx context.Context, userId transaction.UserID, walletId transaction.WalletID) (transaction.Money, error) {
+	const q = `SELECT COALESCE(SUM(CASE WHEN type = 'income' then amount
+    								WHEN type = 'expense' then -amount), 0) 
 									FROM transactions
-									WHERE user_id = ?`
+									WHERE user_id = $1 AND WHERE wallet_id = $2`
 
-	var amount int64
-	err := t.db.QueryRowContext(ctx, q, userId).Scan(&amount)
+	var amount transaction.Money
+	err := t.db.QueryRowContext(ctx, q, userId, walletId).Scan(&amount)
 	if err != nil {
 		return 0, errors.New("Error Getting Balance: " + err.Error())
 	}
-	return transaction.Money(amount), nil
+	return amount, nil
 }
 
-func (t *TransactionRepo) GetMonthlySummary(ctx context.Context, userId uint64, month int, year int) (transaction.MonthlySummary, error) {
+func (t *TransactionRepo) GetMonthlySummary(ctx context.Context, userId transaction.UserID, month int, year int) (transaction.MonthlySummary, error) {
 	const netFlow = `SELECT
-						COALESCE(SUM(CASE WHEN type = 'DEBIT' then amount ELSE 0 END), 0),
-						COALESCE(SUM(CASE WHEN type = 'CREDIT' then amount ELSE 0 END), 0)
+						COALESCE(SUM(CASE WHEN type = 'income' then amount ELSE 0 END), 0),
+						COALESCE(SUM(CASE WHEN type = 'expense' then amount ELSE 0 END), 0)
 					 FROM transactions
-					 WHERE user_id = ? AND MONTH(date) = ? AND YEAR(date) = ?`
-	var totalIncome, totalExpense int64
+					 WHERE user_id = $1 AND MONTH(date) = $2 AND YEAR(date) = $3`
+	var totalIncome, totalExpense transaction.Money
 
 	err := t.db.QueryRowContext(ctx, netFlow, userId, month, year).Scan(&totalIncome, &totalExpense)
 	if err != nil {
 		return transaction.MonthlySummary{}, errors.New("Error Getting Monthly Summary: " + err.Error())
 	}
 	return transaction.MonthlySummary{
-		TotalIncome:  transaction.Money(totalIncome),
-		TotalExpense: transaction.Money(totalExpense),
+		TotalIncome:  totalIncome,
+		TotalExpense: totalExpense,
 	}, nil
 }
 
-func (t *TransactionRepo) GetHighestExpense(ctx context.Context, userId uint64, month int, year int, limit int) (*transaction.Transaction, error) {
-	const trxExpense = `SELECT id, user_id, goal_id, amount, category, description, transaction_type, transaction_source, transaction_date, created_at, updated_at
+func (t *TransactionRepo) GetHighestExpense(ctx context.Context, userId transaction.UserID, month int, year int, limit int) (*transaction.Transaction, error) {
+	const trxExpense = `SELECT id, user_id, goal_id, amount, category_id, description, transaction_type, wallet_id, transaction_date, created_at, updated_at
 						FROM transactions
-						WHERE user_id = ? AND MONTH(date) = ? AND YEAR(date) = ? AND types = 'DEBIT'
+						WHERE user_id = $1 AND MONTH(date) = $2 AND YEAR(date) = $3 AND types = 'expense'
 						ORDER BY amount DESC
-						LIMIT ?`
+						LIMIT $4`
 
 	var (
-		trxID                                  transaction.TransactionId
-		userID, goalID                         uint64
-		amount                                 int64
-		category, desc                         string
-		transaction_type                       string
-		transaction_source                     string
-		transaction_date, createdAt, updatedAt time.Time
+		transactionID, userID                 uint64
+		goalIDNull                            sql.NullInt64
+		amount                                int64
+		categoryID                            uint64
+		description, transactionType          string
+		walletID                              uint64
+		transactionDate, createdAt, updatedAt time.Time
 	)
 	row := t.db.QueryRowContext(ctx, trxExpense, userId, month, year, limit)
 	err := row.Scan(
-		&trxID,
+		&transactionID,
 		&userID,
-		&goalID,
+		&goalIDNull,
 		&amount,
-		&category,
-		&desc,
-		&transaction_type,
-		&transaction_source,
-		&transaction_date,
+		&categoryID,
+		&description,
+		&transactionType,
+		&walletID,
+		&transactionDate,
 		&createdAt,
 		&updatedAt)
 	if err != nil {
@@ -225,28 +251,34 @@ func (t *TransactionRepo) GetHighestExpense(ctx context.Context, userId uint64, 
 			return nil, errors.New("Transaction not found")
 		}
 	}
+	var finalGoalID *transaction.GoalID
+	if goalIDNull.Valid {
+		val := transaction.GoalID(goalIDNull.Int64)
+		finalGoalID = &val
+	}
+
 	trx := transaction.Reconstitute(
-		trxID,
-		userID,
-		goalID,
+		transaction.TransactionID(transactionID),
+		transaction.UserID(userID),
+		finalGoalID,
 		transaction.Money(amount),
-		category,
-		desc,
-		transaction.Type(transaction_type),
-		transaction_source,
-		transaction_date,
+		transaction.CategoryID(categoryID),
+		description,
+		transaction.TransactionType(transactionType),
+		transaction.WalletID(walletID),
+		transactionDate,
 		createdAt,
 		updatedAt)
 	return trx, nil
 }
 
-func (t *TransactionRepo) GetMostSpend(ctx context.Context, userId uint64, month int, year int, limit int) ([]*transaction.CategorySpend, error) {
+func (t *TransactionRepo) GetMostSpend(ctx context.Context, userId transaction.UserID, month int, year int, limit int) ([]*transaction.CategorySpend, error) {
 	const q = `SELECT category, SUM(amount)
 				FROM transactions
-				WHERE user_id = ? AND YEAR(date) = ? AND MONTH(date) = ? 
+				WHERE user_id = $1 AND YEAR(date) = $2 AND MONTH(date) = $3 
 				GROUP BY category
 				ORDER BY total DESC
-				LIMIT ?`
+				LIMIT $4`
 
 	rows, err := t.db.QueryContext(ctx, q, userId, year, month, limit)
 	if err != nil {
@@ -266,17 +298,17 @@ func (t *TransactionRepo) GetMostSpend(ctx context.Context, userId uint64, month
 }
 
 func (t *TransactionRepo) Save(ctx context.Context, tx *transaction.Transaction) error {
-	const q = `INSERT INTO transactions(user_id, goal_id, amount, category, description, transaction_type, transaction_source, transaction_date, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	const q = `INSERT INTO transactions(user_id, goal_id, amount, category_id, description, transaction_type, wallet_id, transaction_date, created_at, updated_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 
 	_, err := t.db.ExecContext(ctx, q,
 		tx.UserID(),
 		tx.GoalID(),
 		tx.Amount(),
-		tx.Category(),
+		tx.CategoryID(),
 		tx.Description(),
 		tx.TransactionType(),
-		tx.TransactionSource(),
+		tx.WalletID(),
 		tx.TransactionDate(),
 		time.Now(),
 		time.Now(),
@@ -285,16 +317,16 @@ func (t *TransactionRepo) Save(ctx context.Context, tx *transaction.Transaction)
 }
 
 func (t *TransactionRepo) Update(ctx context.Context, tx *transaction.Transaction) error {
-	const q = `UPDATE transactions SET userId=?, goalId=?, amount=?, category=?, description=?, transaction_type=?, transaction_source=?, transaction_date=?, updated_at=? WHERE id = ?`
+	const q = `UPDATE transactions SET userId=$1, goalId=$2, amount=$3, category=$4, description=$5, transaction_type=$6, wallet_id=$7, transaction_date=$8, updated_at=$9 WHERE id = $10`
 
 	_, err := t.db.ExecContext(ctx, q,
 		tx.UserID(),
 		tx.GoalID(),
 		tx.Amount(),
-		tx.Category(),
+		tx.CategoryID(),
 		tx.Description(),
 		tx.TransactionType(),
-		tx.TransactionSource(),
+		tx.WalletID(),
 		tx.TransactionDate(),
 		time.Now(),
 		tx.ID(),
@@ -302,8 +334,8 @@ func (t *TransactionRepo) Update(ctx context.Context, tx *transaction.Transactio
 	return err
 }
 
-func (t *TransactionRepo) Delete(ctx context.Context, trxId transaction.TransactionId) error {
-	const q = `DELETE FROM transactions WHERE id = ?`
+func (t *TransactionRepo) Delete(ctx context.Context, trxId transaction.TransactionID) error {
+	const q = `DELETE FROM transactions WHERE id = $1`
 
 	_, err := t.db.ExecContext(ctx, q, trxId)
 	return err
