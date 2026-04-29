@@ -3,8 +3,10 @@ package main
 import (
 	"log"
 	"net/http"
+
 	// Sesuaikan nama "walletwise" dengan nama module di go.mod kamu
-	appService "walletwise/internal/application/transaction"
+	trxService "walletwise/internal/application/transaction"
+	userService "walletwise/internal/application/user"
 	"walletwise/internal/infrastructure/postgres"
 	"walletwise/internal/infrastructure/transport"
 )
@@ -30,12 +32,14 @@ func main() {
 
 	// A. Layer Infrastruktur (Buat Repo, kasih dia DB)
 	trxRepo := postgres.NewTransactionRepo(db)
-
 	// B. Layer Aplikasi (Buat Service, kasih dia Repo)
-	trxService := appService.NewService(trxRepo)
-
+	trxsService := trxService.NewService(trxRepo)
 	// C. Layer Transport (Buat Handler, kasih dia Service)
-	trxHandler := transport.NewTransactionHandler(trxService)
+	trxHandler := transport.NewTransactionHandler(trxsService)
+
+	userRepo := postgres.NewUserRepo(db)
+	usersService := userService.NewService(userRepo)
+	userHandler := transport.NewUserHandler(usersService)
 
 	// ==========================================
 	// 3. SETUP ROUTER (RESEPSIONIS API)
@@ -52,6 +56,12 @@ func main() {
 	mux.HandleFunc("GET /transactions/{transactionID}", trxHandler.GetTransactionById)
 	mux.HandleFunc("PUT /transactions", trxHandler.UpdateTransaction)
 	mux.HandleFunc("DELETE /transactions/{id}", trxHandler.DeleteTransaction)
+
+	mux.HandleFunc("POST /user", userHandler.CreateUser)
+	mux.HandleFunc("GET /user/{id}", userHandler.GetUserByID)
+	mux.HandleFunc("GET /user/email/{email}", userHandler.GetUserByEmail)
+	mux.HandleFunc("PUT /user", userHandler.UpdateUser)
+	mux.HandleFunc("DELETE /user", userHandler.DeleteUser)
 
 	// ==========================================
 	// 4. NYALAKAN SERVER

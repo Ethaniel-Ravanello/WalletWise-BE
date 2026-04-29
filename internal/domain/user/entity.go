@@ -19,7 +19,7 @@ type User struct {
 	updatedAt    time.Time    `json:"updated_at"`
 }
 
-func NewUser(id UserID,
+func NewUser(
 	username string,
 	email string,
 	password string,
@@ -27,9 +27,7 @@ func NewUser(id UserID,
 	isActive bool,
 	createdAt time.Time,
 	updatedAt time.Time) (*User, error) {
-	if id <= 0 {
-		return nil, errors.New("invalid user id")
-	}
+
 	if username == "" {
 		return nil, errors.New("invalid user name")
 	}
@@ -83,7 +81,10 @@ func ReconstituteUser(
 func (u *User) UpdateUser(
 	username string,
 	email string,
+	password string,
 	monthlyLimit MonthlyLimit,
+	isActive bool,
+
 ) error {
 	if username == "" {
 		return errors.New("invalid user name")
@@ -91,35 +92,25 @@ func (u *User) UpdateUser(
 	if email == "" {
 		return errors.New("invalid user email")
 	}
-	if monthlyLimit <= 0 {
-		return errors.New("invalid user limit")
-	}
-	u.username = username
-	u.email = email
-	u.monthlyLimit = monthlyLimit
-	u.updatedAt = time.Now()
-
-	return nil
-}
-
-func (u *User) ChangeStatus(isActive bool) error {
 	if isActive == u.isActive {
 		return errors.New("User Status Cant Be The Same As Before")
 	}
-	u.isActive = isActive
-	u.updatedAt = time.Now()
-	return nil
-}
-
-func (u *User) ChangePassword(password string) error {
 	if password == "" {
 		return errors.New("invalid user password")
 	}
 	if password == u.password {
 		return errors.New("User Password Cant Be The Same As Before")
 	}
+	if monthlyLimit <= 0 {
+		return errors.New("invalid user limit")
+	}
+	u.username = username
+	u.email = email
 	u.password = password
+	u.isActive = isActive
+	u.monthlyLimit = monthlyLimit
 	u.updatedAt = time.Now()
+
 	return nil
 }
 

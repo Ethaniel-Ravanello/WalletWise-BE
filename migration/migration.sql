@@ -85,11 +85,11 @@ CREATE TABLE IF NOT EXISTS transactions (
     );
 
 -- Indexes for queries you'll run often
-CREATE INDEX idx_transactions_user_id ON transactions(user_id);
-CREATE INDEX idx_transactions_date ON transactions(transaction_date);
-CREATE INDEX idx_transactions_category ON transactions(category_id);
-CREATE INDEX idx_transactions_type ON transactions(transaction_type);
-CREATE INDEX idx_saving_goals_user_id ON saving_goals(user_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transaction_date);
+CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(transaction_type);
+CREATE INDEX IF NOT EXISTS idx_saving_goals_user_id ON saving_goals(user_id);
 
 -- Seed default categories
 INSERT INTO categories (name, type) VALUES

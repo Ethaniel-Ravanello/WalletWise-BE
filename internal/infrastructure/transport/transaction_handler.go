@@ -69,7 +69,7 @@ func (h *TransactionHandler) GetTransaction(w http.ResponseWriter, r *http.Reque
 		convType := typeStr
 		input.TransactionType = &convType
 	}
-	if categoryStr := query.Get("category"); categoryStr != "" {
+	if categoryStr := query.Get("categories"); categoryStr != "" {
 		newCategoryID, err := strconv.ParseUint(categoryStr, 10, 64)
 		if err != nil && newCategoryID >= 0 {
 			input.CategoryID = &newCategoryID

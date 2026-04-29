@@ -273,10 +273,10 @@ func (t *TransactionRepo) GetHighestExpense(ctx context.Context, userId transact
 }
 
 func (t *TransactionRepo) GetMostSpend(ctx context.Context, userId transaction.UserID, month int, year int, limit int) ([]*transaction.CategorySpend, error) {
-	const q = `SELECT category, SUM(amount)
+	const q = `SELECT categories, SUM(amount)
 				FROM transactions
 				WHERE user_id = $1 AND YEAR(date) = $2 AND MONTH(date) = $3 
-				GROUP BY category
+				GROUP BY categories
 				ORDER BY total DESC
 				LIMIT $4`
 
@@ -317,7 +317,7 @@ func (t *TransactionRepo) Save(ctx context.Context, tx *transaction.Transaction)
 }
 
 func (t *TransactionRepo) Update(ctx context.Context, tx *transaction.Transaction) error {
-	const q = `UPDATE transactions SET userId=$1, goalId=$2, amount=$3, category=$4, description=$5, transaction_type=$6, wallet_id=$7, transaction_date=$8, updated_at=$9 WHERE id = $10`
+	const q = `UPDATE transactions SET userId=$1, goalId=$2, amount=$3, categories=$4, description=$5, transaction_type=$6, wallet_id=$7, transaction_date=$8, updated_at=$9 WHERE id = $10`
 
 	_, err := t.db.ExecContext(ctx, q,
 		tx.UserID(),

@@ -57,7 +57,7 @@ func NewTransaction(
 		return nil, errors.New("invalid transaction type")
 	}
 	if categoryId <= 0 {
-		return nil, errors.New("category required")
+		return nil, errors.New("categories required")
 	}
 	if walletID <= 0 {
 		return nil, errors.New("wallet id required")
@@ -97,7 +97,7 @@ func (t *Transaction) UpdateDetails(
 		return errors.New("invalid transaction type")
 	}
 	if categoryId <= 0 {
-		return errors.New("category required")
+		return errors.New("categories required")
 	}
 	if walletID <= 0 {
 		return errors.New("wallet id  required")

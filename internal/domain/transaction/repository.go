@@ -9,7 +9,7 @@ type FilterTrx struct {
 	UserID           UserID
 	GoalID           *GoalID // Optional: Filter by specific goal
 	Amount           *Money
-	CategoryId       *CategoryID      // Optional: Filter by category
+	CategoryId       *CategoryID      // Optional: Filter by categories
 	TransactionTypes *TransactionType // Optional: Filter by Income/Expense/Saving
 	WalletID         *WalletID
 	StartDate        *time.Time // Optional: Range start
