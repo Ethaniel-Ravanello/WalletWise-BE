@@ -134,7 +134,7 @@ func (s *Service) DeleteTransaction(ctx context.Context, trxId transaction.Trans
 func (s *Service) GetUserBalance(ctx context.Context, userId uint64, walletId uint64) (*transaction.Money, error) {
 	balance, err := s.repo.GetBalance(ctx, transaction.UserID(userId), transaction.WalletID(walletId))
 	if err != nil {
-		return nil, fmt.Errorf("error getting user balance: %w", err)
+		return nil, fmt.Errorf("error getting users balance: %w", err)
 	}
 	return &balance, nil
 }

@@ -48,7 +48,7 @@ func NewTransaction(
 	transactionDate time.Time,
 ) (*Transaction, error) {
 	if userID == 0 {
-		return nil, errors.New("user id required")
+		return nil, errors.New("users id required")
 	}
 	if amount <= 0 {
 		return nil, errors.New("amount cannot be zero or negative")

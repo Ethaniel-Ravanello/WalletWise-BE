@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	service "walletwise/internal/application/user"
-	"walletwise/internal/domain/user"
+	"walletwise/internal/domain/users"
 )
 
 type UserHandler struct {
@@ -30,7 +30,7 @@ func (u *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
-	// Tangkap {id} dari URL /user/{id}
+	// Tangkap {id} dari URL /users/{id}
 	idString := r.PathValue("id")
 	if idString == "" {
 		WriteJson(w, http.StatusBadRequest, "ID parameter is required", nil)
@@ -44,7 +44,7 @@ func (u *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := u.service.SearchUserById(r.Context(), user.UserID(userId))
+	user, err := u.service.SearchUserById(r.Context(), users.UserID(userId))
 	if err != nil {
 		WriteJson(w, http.StatusInternalServerError, "Internal Server Error", nil)
 		return

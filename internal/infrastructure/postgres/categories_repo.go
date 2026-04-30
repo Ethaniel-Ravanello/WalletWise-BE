@@ -21,7 +21,7 @@ func (c CategoriesRepo) SearchAll(ctx context.Context) ([]*categories.Categories
 
 	rows, err := c.db.QueryContext(ctx, sql)
 	if err != nil {
-		return nil, errors.New("cannot find user: " + err.Error())
+		return nil, errors.New("cannot find users: " + err.Error())
 	}
 	defer rows.Close()
 	var newCategories []*categories.Categories

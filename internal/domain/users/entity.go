@@ -1,4 +1,4 @@
-package user
+package users
 
 import (
 	"errors"
@@ -29,22 +29,22 @@ func NewUser(
 	updatedAt time.Time) (*User, error) {
 
 	if username == "" {
-		return nil, errors.New("invalid user name")
+		return nil, errors.New("invalid users name")
 	}
 	if email == "" {
-		return nil, errors.New("invalid user email")
+		return nil, errors.New("invalid users email")
 	}
 	if password == "" {
-		return nil, errors.New("invalid user password")
+		return nil, errors.New("invalid users password")
 	}
 	if monthlyLimit <= 0 {
-		return nil, errors.New("invalid user limit")
+		return nil, errors.New("invalid users limit")
 	}
 	if createdAt.IsZero() {
-		return nil, errors.New("invalid user createdAt")
+		return nil, errors.New("invalid users createdAt")
 	}
 	if updatedAt.IsZero() {
-		return nil, errors.New("invalid user updatedAt")
+		return nil, errors.New("invalid users updatedAt")
 	}
 	return &User{
 		username:     username,
@@ -87,22 +87,22 @@ func (u *User) UpdateUser(
 
 ) error {
 	if username == "" {
-		return errors.New("invalid user name")
+		return errors.New("invalid users name")
 	}
 	if email == "" {
-		return errors.New("invalid user email")
+		return errors.New("invalid users email")
 	}
 	if isActive == u.isActive {
 		return errors.New("User Status Cant Be The Same As Before")
 	}
 	if password == "" {
-		return errors.New("invalid user password")
+		return errors.New("invalid users password")
 	}
 	if password == u.password {
 		return errors.New("User Password Cant Be The Same As Before")
 	}
 	if monthlyLimit <= 0 {
-		return errors.New("invalid user limit")
+		return errors.New("invalid users limit")
 	}
 	u.username = username
 	u.email = email
