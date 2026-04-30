@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	// Sesuaikan nama "walletwise" dengan nama module di go.mod kamu
+	categoriesService "walletwise/internal/application/categories"
 	trxService "walletwise/internal/application/transaction"
 	userService "walletwise/internal/application/user"
 	"walletwise/internal/infrastructure/postgres"
@@ -41,6 +42,10 @@ func main() {
 	usersService := userService.NewService(userRepo)
 	userHandler := transport.NewUserHandler(usersService)
 
+	categoriesRepo := postgres.NewCategoriesRepo(db)
+	categoriesService := categoriesService.NewService(categoriesRepo)
+	categoriesHandler := transport.NewCategoriesHandler(categoriesService)
+
 	// ==========================================
 	// 3. SETUP ROUTER (RESEPSIONIS API)
 	// ==========================================
@@ -62,6 +67,8 @@ func main() {
 	mux.HandleFunc("GET /user/email/{email}", userHandler.GetUserByEmail)
 	mux.HandleFunc("PUT /user", userHandler.UpdateUser)
 	mux.HandleFunc("DELETE /user", userHandler.DeleteUser)
+
+	mux.HandleFunc("GET /categories", categoriesHandler.GetAllCategories)
 
 	// ==========================================
 	// 4. NYALAKAN SERVER
