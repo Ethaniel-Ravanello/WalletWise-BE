@@ -5,7 +5,7 @@ import "context"
 type Repository interface {
 	SearchAll(ctx context.Context, userID UserID) ([]*Wallet, error)
 	SearchByID(ctx context.Context, userID UserID, walletID WalletID) (*Wallet, error)
-	Save(ctx context.Context, wallet *Wallet) (*Wallet, error)
+	Save(ctx context.Context, wallet *Wallet) error
 	Update(ctx context.Context, wallet *Wallet) error
 	Delete(ctx context.Context, wallet *Wallet) error
 
