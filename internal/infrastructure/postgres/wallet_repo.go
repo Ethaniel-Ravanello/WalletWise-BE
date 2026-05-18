@@ -17,7 +17,7 @@ func NewWalletRepo(db *sql.DB) *WalletRepo { return &WalletRepo{db: db} }
 var _ wallet.Repository = (*WalletRepo)(nil)
 
 func (w WalletRepo) SearchAll(ctx context.Context, userID wallet.UserID) ([]*wallet.Wallet, error) {
-	const sql = `SELECT id, user_id, name, type, balance, created_at, updated_at FROM wallets WHERE user_id = $1`
+	const sql = `SELECT id, user_id, name, wallet_type, balance, created_at, updated_at FROM wallets WHERE user_id = $1`
 
 	var wallets []*wallet.Wallet
 
@@ -101,7 +101,7 @@ func (w WalletRepo) SearchByID(ctx context.Context, userID wallet.UserID, wallet
 }
 
 func (w WalletRepo) Save(ctx context.Context, wallet *wallet.Wallet) error {
-	const sql = `INSERT INTO wallets (user_id, name, type, balance, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)`
+	const sql = `INSERT INTO wallets (user_id, name, wallet_type, balance, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)`
 
 	_, err := w.db.ExecContext(ctx, sql,
 		wallet.UserID(),
@@ -144,7 +144,7 @@ func (w WalletRepo) Delete(ctx context.Context, wallet *wallet.Wallet) error {
 
 func (w WalletRepo) SearchHighestBalance(ctx context.Context, userID wallet.UserID) (*wallet.Wallet, error) {
 	const sql = `
-        SELECT id, name, type, balance, created_at, updated_at 
+        SELECT id, name, walle_type, balance, created_at, updated_at 
         FROM wallets 
         WHERE user_id = $1 
         ORDER BY balance DESC 
@@ -152,19 +152,19 @@ func (w WalletRepo) SearchHighestBalance(ctx context.Context, userID wallet.User
     `
 
 	var (
-		dbId              uint64
-		dbUserId          uint64
-		dbName            string
-		dbTransactionType string
-		dbBalance         uint64
-		dbCreated         time.Time
-		dbUpdated         time.Time
+		dbId         uint64
+		dbUserId     uint64
+		dbName       string
+		dbWalletType string
+		dbBalance    uint64
+		dbCreated    time.Time
+		dbUpdated    time.Time
 	)
 	err := w.db.QueryRowContext(ctx, sql, userID).Scan(
 		&dbId,
 		&dbUserId,
 		&dbName,
-		&dbTransactionType,
+		&dbWalletType,
 		&dbBalance,
 		&dbCreated,
 		&dbUpdated)
@@ -175,7 +175,7 @@ func (w WalletRepo) SearchHighestBalance(ctx context.Context, userID wallet.User
 		wallet.WalletID(dbId),
 		wallet.UserID(dbUserId),
 		dbName,
-		dbTransactionType,
+		dbWalletType,
 		wallet.Balance(dbBalance),
 		dbCreated,
 		dbUpdated,
@@ -188,7 +188,7 @@ func (w WalletRepo) SearchMostActive(ctx context.Context, userID wallet.UserID) 
         SELECT 
             w.id, 
             w.name, 
-            w.type, 
+            w.wallet_type, 
             w.balance,     -- Karena tabelmu sekarang punya balance, kita panggil juga
             w.created_at, 
             w.updated_at,
@@ -201,13 +201,13 @@ func (w WalletRepo) SearchMostActive(ctx context.Context, userID wallet.UserID) 
         LIMIT 1
     `
 	var (
-		dbId              uint64
-		dbUserId          uint64
-		dbName            string
-		dbTransactionType string
-		dbBalance         uint64
-		dbCreated         time.Time
-		dbUpdated         time.Time
+		dbId         uint64
+		dbUserId     uint64
+		dbName       string
+		dbWalletType string
+		dbBalance    uint64
+		dbCreated    time.Time
+		dbUpdated    time.Time
 	)
 
 	rows, err := w.db.QueryContext(ctx, sql, userID)
@@ -220,7 +220,7 @@ func (w WalletRepo) SearchMostActive(ctx context.Context, userID wallet.UserID) 
 		err := rows.Scan(&dbId,
 			&dbUserId,
 			&dbName,
-			&dbTransactionType,
+			&dbWalletType,
 			&dbBalance,
 			&dbCreated,
 			&dbUpdated)
@@ -232,7 +232,7 @@ func (w WalletRepo) SearchMostActive(ctx context.Context, userID wallet.UserID) 
 		wallet.WalletID(dbId),
 		wallet.UserID(dbUserId),
 		dbName,
-		dbTransactionType,
+		dbWalletType,
 		wallet.Balance(dbBalance),
 		dbCreated,
 		dbUpdated)
