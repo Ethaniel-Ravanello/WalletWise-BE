@@ -7,21 +7,23 @@ import (
 
 type WalletID uint64
 type UserID uint64
+type Balance uint64
 
 type Wallet struct {
 	id         WalletID
 	userID     UserID
-	name       string
+	walletName string
 	walletType string
+	balance    Balance
 	createdAt  time.Time
 	updatedAt  time.Time
 }
 
-func NewWallet(userID UserID, name string, walletType string, createdAt time.Time, updatedAt time.Time) (*Wallet, error) {
+func NewWallet(userID UserID, walletName string, walletType string, balance Balance, createdAt time.Time, updatedAt time.Time) (*Wallet, error) {
 	if userID <= 0 {
 		return nil, errors.New(`invalid user id`)
 	}
-	if name == "" {
+	if walletName == "" {
 		return nil, errors.New(`invalid name`)
 	}
 	if walletType == "" {
@@ -35,8 +37,9 @@ func NewWallet(userID UserID, name string, walletType string, createdAt time.Tim
 	}
 	return &Wallet{
 		userID:     userID,
-		name:       name,
+		walletName: walletName,
 		walletType: walletType,
+		balance:    balance,
 		createdAt:  createdAt,
 		updatedAt:  updatedAt,
 	}, nil
@@ -45,25 +48,27 @@ func NewWallet(userID UserID, name string, walletType string, createdAt time.Tim
 func ReconstituteWallet(
 	id WalletID,
 	userID UserID,
-	name string,
+	walletName string,
 	walletType string,
+	balance Balance,
 	createdAt time.Time,
 	updatedAt time.Time) *Wallet {
 	return &Wallet{
 		id:         id,
 		userID:     userID,
-		name:       name,
+		walletName: walletName,
 		walletType: walletType,
+		balance:    balance,
 		createdAt:  createdAt,
 		updatedAt:  updatedAt,
 	}
 }
 
-func (w *Wallet) UpdateWallet(id WalletID, userId UserID, name string, walletType string, createdAt time.Time, updatedAt time.Time) error {
+func (w *Wallet) UpdateWallet(id WalletID, userId UserID, walletName string, walletType string, balance Balance, createdAt time.Time, updatedAt time.Time) error {
 	if userId <= 0 {
 		return errors.New(`invalid user id`)
 	}
-	if name == "" {
+	if walletName == "" {
 		return errors.New(`invalid name`)
 	}
 	if walletType == "" {
@@ -77,8 +82,9 @@ func (w *Wallet) UpdateWallet(id WalletID, userId UserID, name string, walletTyp
 	}
 	w.userID = userId
 	w.id = id
-	w.name = name
+	w.walletName = walletName
 	w.walletType = walletType
+	w.balance = balance
 	w.createdAt = createdAt
 	w.updatedAt = updatedAt
 	return nil
@@ -86,7 +92,8 @@ func (w *Wallet) UpdateWallet(id WalletID, userId UserID, name string, walletTyp
 
 func (w *Wallet) ID() WalletID         { return w.id }
 func (w *Wallet) UserID() UserID       { return w.userID }
-func (w *Wallet) Name() string         { return w.name }
+func (w *Wallet) Name() string         { return w.walletName }
 func (w *Wallet) WalletType() string   { return w.walletType }
+func (w *Wallet) Balance() Balance     { return w.balance }
 func (w *Wallet) CreatedAt() time.Time { return w.createdAt }
 func (w *Wallet) UpdatedAt() time.Time { return w.updatedAt }

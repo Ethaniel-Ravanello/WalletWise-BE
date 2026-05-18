@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS categories (
 CREATE TABLE IF NOT EXISTS wallets (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    type VARCHAR(50) DEFAULT 'general',
+    wallet_name VARCHAR(100) NOT NULL,
+    wallet_type VARCHAR(50) DEFAULT 'general',
     balance BIGINT DEFAULT 0,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
