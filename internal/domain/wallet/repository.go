@@ -11,5 +11,5 @@ type Repository interface {
 
 	SearchHighestBalance(ctx context.Context, userID UserID) (*Wallet, error)
 	SearchMostActive(ctx context.Context, userID UserID) (*Wallet, error)
-	SearchTotalBalance(ctx context.Context, userID UserID) (*Wallet, error)
+	SearchTotalBalance(ctx context.Context, userID UserID) (uint64, error)
 }
