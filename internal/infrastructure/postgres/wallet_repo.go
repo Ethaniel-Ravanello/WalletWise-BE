@@ -186,7 +186,7 @@ func (w WalletRepo) SearchHighestBalance(ctx context.Context, userID wallet.User
 	return walletEntity, nil
 }
 
-func (w WalletRepo) SearchMostActive(ctx context.Context, userID wallet.UserID, walletID string) (*wallet.Wallet, error) {
+func (w WalletRepo) SearchMostActive(ctx context.Context, userID wallet.UserID) (*wallet.Wallet, error) {
 	const sql = `SELECT 
             w.id, 
             w.name, 
@@ -200,9 +200,10 @@ func (w WalletRepo) SearchMostActive(ctx context.Context, userID wallet.UserID, 
         GROUP BY w.id
         ORDER BY total_transactions DESC -- Urutkan dari jumlah transaksi terbanyak
         LIMIT 1`
+	return nil, errors.New("Test")
 }
 
-func (w WalletRepo) SearchTotalBalance(ctx context.Context, userID wallet.UserID, walletID string) (*wallet.Wallet, error) {
+func (w WalletRepo) SearchTotalBalance(ctx context.Context, userID wallet.UserID) (*wallet.Wallet, error) {
 	//TODO implement me
 	panic("implement me")
 }

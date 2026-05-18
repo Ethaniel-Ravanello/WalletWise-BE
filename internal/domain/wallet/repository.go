@@ -9,7 +9,7 @@ type Repository interface {
 	Update(ctx context.Context, wallet *Wallet) error
 	Delete(ctx context.Context, wallet *Wallet) error
 
-	SearchHighestBalance(ctx context.Context, userID UserID, walletID string) (*Wallet, error)
-	SearchMostActive(ctx context.Context, userID UserID, walletID string) (*Wallet, error)
-	SearchTotalBalance(ctx context.Context, userID UserID, walletID string) (*Wallet, error)
+	SearchHighestBalance(ctx context.Context, userID UserID) (*Wallet, error)
+	SearchMostActive(ctx context.Context, userID UserID) (*Wallet, error)
+	SearchTotalBalance(ctx context.Context, userID UserID) (*Wallet, error)
 }

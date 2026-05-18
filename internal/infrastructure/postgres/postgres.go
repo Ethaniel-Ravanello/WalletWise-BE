@@ -29,7 +29,7 @@ func InitDatabase() (*sql.DB, error) {
 	}
 
 	// Sintaks spasi pada port diperbaiki
-	dsn := fmt.Sprintf("host=%s port=%s users=%s password=%s dbname=%s sslmode=disable",
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname,
 	)
 
