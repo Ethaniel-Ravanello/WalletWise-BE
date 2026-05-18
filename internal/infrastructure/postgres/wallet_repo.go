@@ -17,15 +17,16 @@ func NewWalletRepo(db *sql.DB) *WalletRepo { return &WalletRepo{db: db} }
 var _ wallet.Repository = (*WalletRepo)(nil)
 
 func (w WalletRepo) SearchAll(ctx context.Context, userID wallet.UserID) ([]*wallet.Wallet, error) {
-	const sql = `SELECT id, user_id, name, type, created_at, updated_at FROM wallets WHERE user_id = $1`
+	const sql = `SELECT id, user_id, wallet_name, wallet_type, balance, created_at, updated_at FROM wallets WHERE user_id = $1`
 
 	var wallets []*wallet.Wallet
 
 	var (
 		id         uint64
 		tempUserID uint64
-		name       string
+		walletName string
 		walletType string
+		balance    uint64
 		created_at time.Time
 		updated_at time.Time
 	)
@@ -39,8 +40,9 @@ func (w WalletRepo) SearchAll(ctx context.Context, userID wallet.UserID) ([]*wal
 		if err = rows.Scan(
 			&id,
 			&tempUserID,
-			name,
+			walletName,
 			walletType,
+			balance,
 			created_at,
 			updated_at,
 		); err != nil {
@@ -50,26 +52,28 @@ func (w WalletRepo) SearchAll(ctx context.Context, userID wallet.UserID) ([]*wal
 	fixWallet := wallet.ReconstituteWallet(
 		wallet.WalletID(id),
 		wallet.UserID(tempUserID),
-		name,
+		walletName,
 		walletType,
+		wallet.Balance(balance),
 		created_at,
 		updated_at)
 	wallets = append(wallets, fixWallet)
 	return wallets, nil
 }
 
-func (w WalletRepo) SearchByID(ctx context.Context, userID wallet.UserID, walletID wallet.WalletID) (*wallet.Wallet, error) {
-	const sql = `SELECT id, user_id, name, type, created_at, updated_at FROM wallets WHERE id = $1`
+func (w WalletRepo) SearchByID(ctx context.Context, walletID wallet.WalletID) (*wallet.Wallet, error) {
+	const sql = `SELECT id, user_id, wallet_name, wallet_type, created_at, updated_at FROM wallets WHERE id = $1`
 
 	var (
 		id         uint64
 		tempUserID uint64
-		name       string
+		walletName string
 		walletType string
+		balance    uint64
 		created_at time.Time
 		updated_at time.Time
 	)
-	rows, err := w.db.QueryContext(ctx, sql, userID)
+	rows, err := w.db.QueryContext(ctx, sql, walletID)
 	if err != nil {
 		return nil, errors.New("Error Scanning Rows: " + err.Error())
 	}
@@ -77,8 +81,9 @@ func (w WalletRepo) SearchByID(ctx context.Context, userID wallet.UserID, wallet
 	err = rows.Scan(
 		&id,
 		&tempUserID,
-		&name,
+		&walletName,
 		&walletType,
+		&balance,
 		&created_at,
 		&updated_at)
 	if err != nil {
@@ -87,15 +92,16 @@ func (w WalletRepo) SearchByID(ctx context.Context, userID wallet.UserID, wallet
 	wlt := wallet.ReconstituteWallet(
 		wallet.WalletID(id),
 		wallet.UserID(tempUserID),
-		name,
+		walletName,
 		walletType,
+		wallet.Balance(balance),
 		created_at,
 		updated_at)
 	return wlt, nil
 }
 
 func (w WalletRepo) Save(ctx context.Context, wallet *wallet.Wallet) error {
-	const sql = `INSERT INTO wallets (user_id, name, type, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)`
+	const sql = `INSERT INTO wallets (user_id, wallet_name, wallet_type, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)`
 
 	_, err := w.db.ExecContext(ctx, sql,
 		wallet.UserID(),
@@ -110,11 +116,12 @@ func (w WalletRepo) Save(ctx context.Context, wallet *wallet.Wallet) error {
 }
 
 func (w WalletRepo) Update(ctx context.Context, wallet *wallet.Wallet) error {
-	const sql = `UPDATE wallets SET name = $1, wallet_type = $2, updated_at = $3 WHERE user_id = $3`
+	const sql = `UPDATE wallets SET wallet_name = $1, wallet_type = $2, balance = $3, updated_at = $4 WHERE user_id = $5`
 
 	_, err := w.db.ExecContext(ctx, sql,
 		wallet.Name(),
 		wallet.WalletType(),
+		wallet.Balance(),
 		time.Now())
 	if err != nil {
 		return errors.New("Internal Error: " + err.Error())
@@ -162,6 +169,7 @@ func (w WalletRepo) SearchHighestBalance(ctx context.Context, userID wallet.User
 		dbUserId          uint64
 		dbName            string
 		dbTransactionType string
+		dbBalance         uint64
 		dbCreated         time.Time
 		dbUpdated         time.Time
 	)
@@ -170,6 +178,7 @@ func (w WalletRepo) SearchHighestBalance(ctx context.Context, userID wallet.User
 		&dbUserId,
 		&dbName,
 		&dbTransactionType,
+		&dbBalance,
 		&dbCreated,
 		&dbUpdated)
 	if err != nil {
@@ -180,6 +189,7 @@ func (w WalletRepo) SearchHighestBalance(ctx context.Context, userID wallet.User
 		wallet.UserID(dbUserId),
 		dbName,
 		dbTransactionType,
+		wallet.Balance(dbBalance),
 		dbCreated,
 		dbUpdated,
 	)
@@ -200,9 +210,51 @@ func (w WalletRepo) SearchMostActive(ctx context.Context, userID wallet.UserID, 
         GROUP BY w.id
         ORDER BY total_transactions DESC -- Urutkan dari jumlah transaksi terbanyak
         LIMIT 1`
+
+	var (
+		dbId              uint64
+		dbUserId          uint64
+		dbName            string
+		dbTransactionType string
+		dbBalance         uint64
+		dbCreated         time.Time
+		dbUpdated         time.Time
+	)
+	err := w.db.QueryRowContext(ctx, sql, userID).Scan(
+		&dbId,
+		&dbUserId,
+		&dbName,
+		&dbTransactionType,
+		&dbBalance,
+		&dbCreated,
+		&dbUpdated)
+	if err != nil {
+		return nil, errors.New("Error Scanning Rows: " + err.Error())
+	}
+	walletEntity := wallet.ReconstituteWallet(
+		wallet.WalletID(dbId),
+		wallet.UserID(dbUserId),
+		dbName,
+		dbTransactionType,
+		wallet.Balance(dbBalance),
+		dbCreated,
+		dbUpdated,
+	)
+	return walletEntity, nil
 }
 
-func (w WalletRepo) SearchTotalBalance(ctx context.Context, userID wallet.UserID, walletID string) (*wallet.Wallet, error) {
-	//TODO implement me
-	panic("implement me")
+func (w WalletRepo) SearchTotalBalance(ctx context.Context, userID wallet.UserID, walletID string) (uint64, error) {
+	const sql = `
+        SELECT COALESCE(SUM(balance), 0) 
+        FROM wallets 
+        WHERE user_id = $1
+    `
+	var balance uint64
+	err := w.db.QueryRowContext(ctx, sql, userID).Scan(
+		&balance)
+	if err != nil {
+		return 0, errors.New("Error Scanning Rows: " + err.Error())
+	}
+	return balance, nil
+
 }
