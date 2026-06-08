@@ -120,7 +120,11 @@ func (s *Service) UpdateTransaction(ctx context.Context, input *TrxUpdate) error
 		transaction.TransactionType(input.TransactionType),
 		transaction.WalletID(input.WalletID),
 		input.Date)
-	return err
+	if err != nil {
+		return fmt.Errorf("error updating transaction: %w", err)
+	}
+	return s.repo.Update(ctx, existingTrx)
+
 }
 
 func (s *Service) DeleteTransaction(ctx context.Context, trxId transaction.TransactionID) error {

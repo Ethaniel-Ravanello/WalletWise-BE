@@ -8,6 +8,7 @@ import (
 	categoriesService "walletwise/internal/application/categories"
 	trxService "walletwise/internal/application/transaction"
 	userService "walletwise/internal/application/user"
+	walletService "walletwise/internal/application/wallet"
 	"walletwise/internal/infrastructure/postgres"
 	"walletwise/internal/infrastructure/transport"
 )
@@ -46,6 +47,10 @@ func main() {
 	categoriesService := categoriesService.NewService(categoriesRepo)
 	categoriesHandler := transport.NewCategoriesHandler(categoriesService)
 
+	walletRepo := postgres.NewWalletRepo(db)
+	walletService := walletService.NewWalletService(walletRepo)
+	walletHandler := transport.NewWalletHandler(walletService)
+
 	// ==========================================
 	// 3. SETUP ROUTER (RESEPSIONIS API)
 	// ==========================================
@@ -69,6 +74,14 @@ func main() {
 	mux.HandleFunc("DELETE /user", userHandler.DeleteUser)
 
 	mux.HandleFunc("GET /categories", categoriesHandler.GetAllCategories)
+
+	mux.HandleFunc("GET /wallets", walletHandler.SearchAllWallets)
+	mux.HandleFunc("GET /wallets/{id}", walletHandler.SearchWalletsByID)
+	mux.HandleFunc("PUT /wallets/{userId}/highest-balance", walletHandler.SearchHighestBalance)
+	mux.HandleFunc("PUT /wallets/{userId}/most-active", walletHandler.SearchMostActive)
+	mux.HandleFunc("PUT /wallets/{userId}/total-balance", walletHandler.SearchTotalBalance)
+	mux.HandleFunc("PUT /wallets", walletHandler.UpdateWallet)
+	mux.HandleFunc("DELETE /wallets", walletHandler.DeleteWallet)
 
 	// ==========================================
 	// 4. NYALAKAN SERVER
