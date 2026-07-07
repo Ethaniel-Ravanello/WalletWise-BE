@@ -8,20 +8,20 @@ import (
 )
 
 type UserInput struct {
-	username     string
-	email        string
-	password     string
-	monthlyLimit uint64
-	isActive     bool
+	Username     string
+	Email        string
+	Password     string
+	MonthlyLimit uint64
+	IsActive     bool
 }
 
 type UserUpdateInput struct {
 	ID           uint64
-	username     string
-	email        string
-	password     string
-	monthlyLimit uint64
-	isActive     bool
+	Username     string
+	Email        string
+	Password     string
+	MonthlyLimit uint64
+	IsActive     bool
 }
 
 type Service struct {
@@ -32,11 +32,11 @@ func NewService(repo users.Repository) *Service { return &Service{repo: repo} }
 
 func (u *Service) CreateUser(ctx context.Context, input UserInput) (*users.User, error) {
 	trx, err := users.NewUser(
-		input.username,
-		input.email,
-		input.password,
-		users.MonthlyLimit(input.monthlyLimit),
-		input.isActive,
+		input.Username,
+		input.Email,
+		input.Password,
+		users.MonthlyLimit(input.MonthlyLimit),
+		input.IsActive,
 		time.Now(),
 		time.Now())
 	if err != nil {
@@ -70,11 +70,11 @@ func (u *Service) UpdateUser(ctx context.Context, userInput *UserUpdateInput) er
 		return fmt.Errorf("error finding users: %w", err)
 	}
 	err = existingTrx.UpdateUser(
-		userInput.username,
-		userInput.email,
-		userInput.password,
-		users.MonthlyLimit(userInput.monthlyLimit),
-		userInput.isActive,
+		userInput.Username,
+		userInput.Email,
+		userInput.Password,
+		users.MonthlyLimit(userInput.MonthlyLimit),
+		userInput.IsActive,
 	)
 	err = u.repo.Update(ctx, existingTrx)
 	if err != nil {

@@ -9,20 +9,19 @@ import (
 )
 
 type WalletInput struct {
-	userId     uint64
-	walletName string
-	walletType string
-	balance    uint64
+	UserID     uint64 // Ubah dari userId ke UserID
+	WalletName string // Ubah dari walletName ke WalletName
+	WalletType string // Ubah dari walletType ke WalletType
+	Balance    uint64 // Ubah dari balance ke Balance
 }
 
 type WalletUpdateInput struct {
 	ID         uint64
-	userID     uint64
-	walletName string
-	walletType string
-	balance    uint64
+	UserID     uint64 // Kapital
+	WalletName string // Kapital
+	WalletType string // Kapital
+	Balance    uint64 // Kapital
 }
-
 type Service struct {
 	repo wallet.Repository
 }
@@ -30,7 +29,7 @@ type Service struct {
 func NewWalletService(repo wallet.Repository) *Service { return &Service{repo: repo} }
 
 func (w *Service) CreateWallet(ctx context.Context, input WalletInput) error {
-	allWallets, err := w.repo.SearchAll(ctx, wallet.UserID(input.userId))
+	allWallets, err := w.repo.SearchAll(ctx, wallet.UserID(input.UserID))
 	if err != nil {
 		return err
 	}
@@ -39,15 +38,15 @@ func (w *Service) CreateWallet(ctx context.Context, input WalletInput) error {
 	}
 
 	for _, existWallet := range allWallets {
-		if strings.EqualFold(existWallet.Name(), input.walletName) {
+		if strings.EqualFold(existWallet.Name(), input.WalletName) {
 			return errors.New("Duplikat Wallet")
 		}
 	}
 
 	wallets, err := wallet.NewWallet(
-		wallet.UserID(input.userId),
-		input.walletName,
-		input.walletType,
+		wallet.UserID(input.UserID),
+		input.WalletName,
+		input.WalletType,
 		0,
 		time.Now(),
 		time.Now())
@@ -81,23 +80,23 @@ func (w *Service) UpdateWallet(ctx context.Context, walletUpdate WalletUpdateInp
 	if err != nil {
 		return errors.New("Wallet Tidak Ditemukan")
 	}
-	if checkWallet.UserID() != wallet.UserID(walletUpdate.userID) {
+	if checkWallet.UserID() != wallet.UserID(walletUpdate.UserID) {
 		return errors.New("Invalid User Wallet")
 	}
-	if !strings.EqualFold(walletUpdate.walletName, checkWallet.Name()) {
+	if !strings.EqualFold(walletUpdate.WalletName, checkWallet.Name()) {
 		checkName, err := w.repo.SearchByID(ctx, wallet.WalletID(walletUpdate.ID))
 		if err != nil {
 			return errors.New("Internal Error")
 		}
-		if strings.EqualFold(checkName.Name(), walletUpdate.walletName) {
+		if strings.EqualFold(checkName.Name(), walletUpdate.WalletType) {
 			return errors.New("Wallet Duplicate")
 		}
 	}
 	err = checkWallet.UpdateWallet(
 		wallet.WalletID(walletUpdate.ID),
-		wallet.UserID(walletUpdate.userID),
-		walletUpdate.walletName,
-		walletUpdate.walletType,
+		wallet.UserID(walletUpdate.UserID),
+		walletUpdate.WalletName,
+		walletUpdate.WalletType,
 		checkWallet.Balance(),
 		checkWallet.CreatedAt(),
 		time.Now())
@@ -108,12 +107,12 @@ func (w *Service) UpdateWallet(ctx context.Context, walletUpdate WalletUpdateInp
 }
 
 func (w *Service) DeleteWallet(ctx context.Context, input WalletInput) error {
-	checkWallet, err := w.repo.SearchByID(ctx, wallet.WalletID(input.userId))
+	checkWallet, err := w.repo.SearchByID(ctx, wallet.WalletID(input.UserID))
 	if err != nil {
 		return errors.New("Wallet Tidak Ditemukan")
 	}
 
-	if checkWallet.UserID() != wallet.UserID(input.userId) {
+	if checkWallet.UserID() != wallet.UserID(input.UserID) {
 		return errors.New("Invalid User Wallet")
 	}
 	return w.repo.Delete(ctx, checkWallet)

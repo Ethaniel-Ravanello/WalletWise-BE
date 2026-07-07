@@ -4,40 +4,83 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
+
 	service "walletwise/internal/application/user"
 	"walletwise/internal/domain/users"
 )
+
+// --- DTO / Response Structs ---
+
+type UserResponse struct {
+	ID           uint64    `json:"id"`
+	Username     string    `json:"username"`
+	Email        string    `json:"email"`
+	MonthlyLimit uint64    `json:"monthly_limit"`
+	IsActive     bool      `json:"is_active"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type CreateUserRequest struct {
+	Username     string `json:"username"`
+	Email        string `json:"email"`
+	Password     string `json:"password"`
+	MonthlyLimit uint64 `json:"monthly_limit"`
+	IsActive     bool   `json:"is_active"`
+}
+
+type UpdateUserRequest struct {
+	Username     string `json:"username"`
+	Email        string `json:"email"`
+	Password     string `json:"password"`
+	MonthlyLimit uint64 `json:"monthly_limit"`
+	IsActive     bool   `json:"is_active"`
+}
+
+// --- Handler ---
 
 type UserHandler struct {
 	service *service.Service
 }
 
-func NewUserHandler(service *service.Service) *UserHandler { return &UserHandler{service: service} }
+func NewUserHandler(service *service.Service) *UserHandler {
+	return &UserHandler{service: service}
+}
 
 func (u *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
-	var userinput service.UserInput
+	var req CreateUserRequest
 
-	if err := json.NewEncoder(w).Encode(userinput); err != nil {
-		WriteJson(w, http.StatusBadRequest, "Format JSON Tidak Valid", nil)
+	// PERBAIKAN: Menggunakan Decoder untuk membaca Request Body, bukan Encoder
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteJson(w, http.StatusBadRequest, "Invalid request payload", nil)
 		return
 	}
-	user, err := u.service.CreateUser(r.Context(), userinput)
+
+	input := service.UserInput{
+		Username:     req.Username,
+		Email:        req.Email,
+		Password:     req.Password,
+		MonthlyLimit: req.MonthlyLimit,
+		IsActive:     req.IsActive,
+	}
+
+	user, err := u.service.CreateUser(r.Context(), input)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, "Internal Server Error", nil)
+		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
-	WriteJson(w, http.StatusOK, "User Created", user)
+
+	WriteJson(w, http.StatusCreated, "User Created", toUserResponse(user))
 }
 
 func (u *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
-	// Tangkap {id} dari URL /users/{id}
 	idString := r.PathValue("id")
 	if idString == "" {
 		WriteJson(w, http.StatusBadRequest, "ID parameter is required", nil)
 		return
 	}
 
-	// Convert string ke angka
 	userId, err := strconv.ParseUint(idString, 10, 64)
 	if err != nil {
 		WriteJson(w, http.StatusBadRequest, "Invalid ID format", nil)
@@ -46,10 +89,11 @@ func (u *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
 
 	user, err := u.service.SearchUserById(r.Context(), users.UserID(userId))
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, "Internal Server Error", nil)
+		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
-	WriteJson(w, http.StatusOK, "User Found", user)
+
+	WriteJson(w, http.StatusOK, "User Found", toUserResponse(user))
 }
 
 func (u *UserHandler) GetUserByEmail(w http.ResponseWriter, r *http.Request) {
@@ -61,42 +105,79 @@ func (u *UserHandler) GetUserByEmail(w http.ResponseWriter, r *http.Request) {
 
 	userEntity, err := u.service.SearchUserByEmail(r.Context(), email)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, "User Not Found", nil)
+		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "User Found", userEntity)
+	WriteJson(w, http.StatusOK, "User Found", toUserResponse(userEntity))
 }
 
 func (u *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
-	var userInput service.UserUpdateInput
-
-	if err := json.NewDecoder(r.Body).Decode(&userInput); err != nil {
-		WriteJson(w, http.StatusBadRequest, "Format JSON Tidak Valid", nil)
-		return
-	}
-
-	err := u.service.UpdateUser(r.Context(), &userInput)
-
+	// Ambil ID dari URL (Standar REST: PUT /users/{id})
+	idString := r.PathValue("id")
+	userId, err := strconv.ParseUint(idString, 10, 64)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, "Internal Server Error", nil)
+		WriteJson(w, http.StatusBadRequest, "Invalid ID format", nil)
 		return
 	}
+
+	var req UpdateUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteJson(w, http.StatusBadRequest, "Invalid request payload", nil)
+		return
+	}
+
+	input := &service.UserUpdateInput{
+		ID:           userId,
+		Username:     req.Username,
+		Email:        req.Email,
+		Password:     req.Password,
+		MonthlyLimit: req.MonthlyLimit,
+		IsActive:     req.IsActive,
+	}
+
+	err = u.service.UpdateUser(r.Context(), input)
+	if err != nil {
+		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		return
+	}
+
 	WriteJson(w, http.StatusOK, "User Updated", nil)
 }
 
 func (u *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
-	var userInput service.UserUpdateInput
-
-	if err := json.NewDecoder(r.Body).Decode(&userInput); err != nil {
-		WriteJson(w, http.StatusBadRequest, "Format JSON Tidak Valid", nil)
-		return
-	}
-
-	err := u.service.DeleteUser(r.Context(), userInput)
+	// Ambil ID dari URL (Standar REST: DELETE /users/{id})
+	idString := r.PathValue("id")
+	userId, err := strconv.ParseUint(idString, 10, 64)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, "Internal Server Error", nil)
+		WriteJson(w, http.StatusBadRequest, "Invalid ID format", nil)
 		return
 	}
+
+	input := service.UserUpdateInput{
+		ID: userId,
+	}
+
+	err = u.service.DeleteUser(r.Context(), input)
+	if err != nil {
+		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		return
+	}
+
 	WriteJson(w, http.StatusOK, "User Deleted", nil)
+}
+
+// --- Helper Functions ---
+
+// toUserResponse memetakan Entity User ke Struct Response API
+func toUserResponse(user *users.User) UserResponse {
+	return UserResponse{
+		ID:           uint64(user.UserID()),
+		Username:     user.Username(),
+		Email:        user.Email(),
+		MonthlyLimit: uint64(user.MonthlyLimit()),
+		IsActive:     user.IsActive(),
+		CreatedAt:    user.CreatedAt(),
+		UpdatedAt:    user.UpdatedAt(),
+	}
 }
