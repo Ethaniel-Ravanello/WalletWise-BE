@@ -35,7 +35,7 @@ func (u UserRepo) Save(ctx context.Context, user *users.User) error {
 }
 
 func (u UserRepo) FindByID(ctx context.Context, id users.UserID) (*users.User, error) {
-	const sql = `SELECT id, username, email, password, monthly_limmit, is_active, created_at, updated_at FROM users WHERE id = $1`
+	const sql = `SELECT id, username, email, password, monthly_limit, is_active, created_at, updated_at FROM users WHERE id = $1`
 
 	var (
 		userID        uint64
@@ -73,7 +73,7 @@ func (u UserRepo) FindByID(ctx context.Context, id users.UserID) (*users.User, e
 }
 
 func (u UserRepo) FindByEmail(ctx context.Context, email string) (*users.User, error) {
-	const sql = `SELECT id, username, email, password, monthly_limit, isActive, created_at, updated_at FROM users WHERE email = $1`
+	const sql = `SELECT id, username, email, password, monthly_limit, is_active, created_at, updated_at FROM users WHERE email = $1`
 
 	var (
 		userID        uint64
@@ -112,7 +112,7 @@ func (u UserRepo) FindByEmail(ctx context.Context, email string) (*users.User, e
 }
 
 func (u UserRepo) Update(ctx context.Context, user *users.User) error {
-	const sql = `UPDATE users SET username=$1, email=$2, password=$3, monthly_limit=$4, is_active=$6, updated_at = $7 where id = $8`
+	const sql = `UPDATE users SET username=$1, email=$2, password=$3, monthly_limit=$4, is_active=$5, updated_at = $6 where id = $7`
 
 	_, err := u.db.ExecContext(ctx, sql,
 		user.Username(),

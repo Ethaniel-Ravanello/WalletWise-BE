@@ -40,11 +40,11 @@ func (w WalletRepo) SearchAll(ctx context.Context, userID wallet.UserID) ([]*wal
 		if err = rows.Scan(
 			&id,
 			&tempUserID,
-			name,
-			walletType,
-			balance,
-			created_at,
-			updated_at,
+			&name,
+			&walletType,
+			&balance,
+			&created_at,
+			&updated_at,
 		); err != nil {
 			return nil, errors.New("Internal Error: " + err.Error())
 		}
@@ -62,7 +62,7 @@ func (w WalletRepo) SearchAll(ctx context.Context, userID wallet.UserID) ([]*wal
 }
 
 func (w WalletRepo) SearchByID(ctx context.Context, walletID wallet.WalletID) (*wallet.Wallet, error) {
-	const sql = `SELECT id, user_id, name, type, balance, created_at, updated_at FROM wallets WHERE id = $1`
+	const sql = `SELECT id, user_id, name, wallet_type, balance, created_at, updated_at FROM wallets WHERE id = $1`
 
 	var (
 		id         uint64
@@ -73,12 +73,8 @@ func (w WalletRepo) SearchByID(ctx context.Context, walletID wallet.WalletID) (*
 		created_at time.Time
 		updated_at time.Time
 	)
-	rows, err := w.db.QueryContext(ctx, sql, walletID)
-	if err != nil {
-		return nil, errors.New("Error Scanning Rows: " + err.Error())
-	}
-	defer rows.Close()
-	err = rows.Scan(
+	rows := w.db.QueryRowContext(ctx, sql, walletID)
+	err := rows.Scan(
 		&id,
 		&tempUserID,
 		&name,

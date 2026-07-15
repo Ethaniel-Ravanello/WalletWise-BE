@@ -32,6 +32,7 @@ type UpdateWalletRequest struct {
 	UserID     uint64 `json:"user_id"`
 	WalletName string `json:"wallet_name"`
 	WalletType string `json:"wallet_type"`
+	Balance    uint64 `json:"balance"`
 }
 
 // --- Handler ---
@@ -162,14 +163,20 @@ func (wh *WalletHandler) DeleteWallet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// CATATAN: Service DeleteWallet Anda saat ini menggunakan WalletInput
-	// dan menjadikan input.userId sebagai WalletID.
-	// Saya memetakan variabel 'id' dari URL ke UserID agar kodenya bisa jalan.
-	input := service.WalletInput{
-		UserID: id,
+	var req UpdateWalletRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteJson(w, http.StatusBadRequest, "Invalid request payload", nil)
+		return
+	}
+	input := service.WalletUpdateInput{
+		ID:         id,
+		UserID:     req.UserID,
+		WalletName: req.WalletName,
+		WalletType: req.WalletType,
+		Balance:    req.Balance,
 	}
 
-	err = wh.service.DeleteWallet(r.Context(), input)
+	err = wh.service.DeleteWallet(r.Context(), service.WalletInput(input))
 	if err != nil {
 		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
 		return

@@ -65,7 +65,9 @@ func (u *Service) SearchUserByEmail(ctx context.Context, email string) (*users.U
 }
 
 func (u *Service) UpdateUser(ctx context.Context, userInput *UserUpdateInput) error {
+	fmt.Println(userInput)
 	existingTrx, err := u.SearchUserById(ctx, users.UserID(userInput.ID))
+	fmt.Println(existingTrx)
 	if err != nil {
 		return fmt.Errorf("error finding users: %w", err)
 	}
@@ -76,6 +78,9 @@ func (u *Service) UpdateUser(ctx context.Context, userInput *UserUpdateInput) er
 		users.MonthlyLimit(userInput.MonthlyLimit),
 		userInput.IsActive,
 	)
+	if err != nil {
+		return fmt.Errorf("error updating user entity: %w", err)
+	}
 	err = u.repo.Update(ctx, existingTrx)
 	if err != nil {
 		return fmt.Errorf("error updating users: %w", err)

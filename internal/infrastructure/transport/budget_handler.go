@@ -4,32 +4,19 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
-	"time"
 
 	// Sesuaikan path import lu ya
 	service "walletwise/internal/application/budget"
-	"walletwise/internal/domain/budget"
 )
 
-// --- DTO / Response Structs ---
-
-type BudgetResponse struct {
-	ID         uint64    `json:"id"`
-	UserID     uint64    `json:"user_id"`
-	CategoryID uint64    `json:"category_id"`
-	Month      int       `json:"month"`
-	Year       int       `json:"year"`
-	Amount     int64     `json:"amount"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-}
+// --- DTO Inputs ---
 
 type CreateBudgetRequest struct {
 	UserID     uint64 `json:"user_id"`
 	CategoryID uint64 `json:"category_id"`
 	Month      int    `json:"month"`
 	Year       int    `json:"year"`
-	Amount     int64  `json:"amount"`
+	Amount     int64  `json:"amount"` // Ini akan dibaca sebagai Target/Max Amount
 }
 
 type UpdateBudgetRequest struct {
@@ -65,13 +52,14 @@ func (h *BudgetHandler) CreateBudget(w http.ResponseWriter, r *http.Request) {
 		Amount:     req.Amount,
 	}
 
+	// 'b' sekarang adalah *service.BudgetDetailResponse yang udah ada current_amount & remaining-nya
 	b, err := h.service.CreateBudget(r.Context(), input)
 	if err != nil {
 		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	WriteJson(w, http.StatusCreated, "Success create budget", toBudgetResponse(b))
+	WriteJson(w, http.StatusCreated, "Success create budget", b)
 }
 
 // GetBudgetByID mengambil detail satu budget (GET)
@@ -83,13 +71,14 @@ func (h *BudgetHandler) GetBudgetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Langsung dapat DTO lengkap dari service
 	b, err := h.service.GetBudgetByID(r.Context(), budgetID)
 	if err != nil {
 		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "Success get budget", toBudgetResponse(b))
+	WriteJson(w, http.StatusOK, "Success get budget", b)
 }
 
 // GetBudgetsByMonth mengambil daftar budget user di bulan tertentu (GET)
@@ -104,22 +93,19 @@ func (h *BudgetHandler) GetBudgetsByMonth(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Langsung dapat slice []*service.BudgetDetailResponse
 	budgets, err := h.service.GetBudgetsByMonth(r.Context(), userID, month, year)
 	if err != nil {
 		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	var responses []BudgetResponse
-	for _, b := range budgets {
-		responses = append(responses, toBudgetResponse(b))
+	// Antisipasi jika data kosong agar output JSON jadi [] bukan null
+	if budgets == nil {
+		budgets = []*service.BudgetDetailResponse{}
 	}
 
-	if responses == nil {
-		responses = []BudgetResponse{}
-	}
-
-	WriteJson(w, http.StatusOK, "Success get budgets", responses)
+	WriteJson(w, http.StatusOK, "Success get budgets", budgets)
 }
 
 // UpdateBudget memperbarui data budget (PUT/PATCH)
@@ -168,23 +154,4 @@ func (h *BudgetHandler) DeleteBudget(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJson(w, http.StatusOK, "Success delete budget", nil)
-}
-
-// --- Helper Functions ---
-
-// toBudgetResponse memetakan Entity Budget ke Struct Response API
-func toBudgetResponse(b *budget.Budget) BudgetResponse {
-	if b == nil {
-		return BudgetResponse{}
-	}
-	return BudgetResponse{
-		ID:         uint64(b.ID()),
-		UserID:     uint64(b.UserID()),
-		CategoryID: uint64(b.CategoryID()),
-		Month:      b.Month(),
-		Year:       b.Year(),
-		Amount:     b.Amount(),
-		CreatedAt:  b.CreatedAt(),
-		UpdatedAt:  b.UpdatedAt(),
-	}
 }

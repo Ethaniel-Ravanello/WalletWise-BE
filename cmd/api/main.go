@@ -103,11 +103,9 @@ func main() {
 	// --- BUDGETS ---
 	// ==========================================
 	mux.HandleFunc("POST /budgets", budgetHandler.CreateBudget)
-
 	// Mengambil list budget bulanan (Gunakan query params saat manggil API-nya)
 	// Contoh request: GET /budgets?user_id=1&month=7&year=2026
 	mux.HandleFunc("GET /budgets", budgetHandler.GetBudgetsByMonth)
-
 	// Operasi spesifik per ID Budget
 	mux.HandleFunc("GET /budgets/{id}", budgetHandler.GetBudgetByID)
 	mux.HandleFunc("PUT /budgets/{id}", budgetHandler.UpdateBudget)

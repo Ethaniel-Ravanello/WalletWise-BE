@@ -10,8 +10,6 @@ import (
 )
 
 // --- DTO Inputs ---
-// Pastikan huruf depannya Kapital agar bisa dibaca oleh layer Transport (Handler)
-
 type BudgetInput struct {
 	UserID     uint64
 	CategoryID uint64
@@ -28,19 +26,29 @@ type BudgetUpdateInput struct {
 	Amount     int64
 }
 
-// --- Service ---
+type BudgetDetailResponse struct {
+	ID            uint64 `json:"id"`
+	UserID        uint64 `json:"user_id"`
+	CategoryID    uint64 `json:"category_id"`
+	Month         int    `json:"month"`
+	Year          int    `json:"year"`
+	MaxAmount     int64  `json:"max_amount"`
+	CurrentAmount int64  `json:"current_amount"`
+	Remaining     int64  `json:"remaining"`
+}
 
 type Service struct {
 	repo budget.Repository
 }
 
 func NewService(repo budget.Repository) *Service {
-	return &Service{repo: repo}
+	return &Service{
+		repo: repo,
+	}
 }
 
-// CreateBudget membuat budget baru dengan validasi duplikasi
-func (s *Service) CreateBudget(ctx context.Context, input BudgetInput) (*budget.Budget, error) {
-	// Validasi Bisnis: Cek apakah budget untuk kategori di bulan & tahun ini sudah ada
+// CreateBudget membuat budget baru dan mengembalikan detail DTO-nya
+func (s *Service) CreateBudget(ctx context.Context, input BudgetInput) (*BudgetDetailResponse, error) {
 	existingBudget, err := s.repo.FindByUserAndCategory(
 		ctx,
 		budget.UserID(input.UserID),
@@ -49,12 +57,10 @@ func (s *Service) CreateBudget(ctx context.Context, input BudgetInput) (*budget.
 		input.Year,
 	)
 
-	// Jika tidak ada error dan datanya ketemu, berarti duplikat
 	if err == nil && existingBudget != nil {
 		return nil, errors.New("budget for this category in the specified month and year already exists")
 	}
 
-	// Buat entity budget baru
 	newBudget, err := budget.NewBudget(
 		budget.UserID(input.UserID),
 		budget.CategoryID(input.CategoryID),
@@ -68,25 +74,49 @@ func (s *Service) CreateBudget(ctx context.Context, input BudgetInput) (*budget.
 		return nil, err
 	}
 
-	// Simpan ke database
-	if err := s.repo.Save(ctx, newBudget); err != nil {
+	walletId, err := s.repo.Save(ctx, newBudget)
+
+	// Hitung pengeluaran (berjaga-jaga jika user membuat budget secara retroaktif untuk transaksi yang sudah ada)
+	totalSpent, err := s.repo.CalculateTotalSpent(ctx, uint64(walletId), input.CategoryID, input.Month, input.Year)
+	if err != nil {
 		return nil, err
 	}
-
-	return newBudget, nil
+	return &BudgetDetailResponse{
+		ID:            uint64(newBudget.ID()),
+		UserID:        uint64(newBudget.UserID()),
+		CategoryID:    uint64(newBudget.CategoryID()),
+		Month:         newBudget.Month(),
+		Year:          newBudget.Year(),
+		MaxAmount:     newBudget.Amount(),
+		CurrentAmount: totalSpent,
+		Remaining:     newBudget.Amount() - totalSpent,
+	}, nil
 }
 
-// GetBudgetByID mengambil satu data budget berdasarkan ID-nya
-func (s *Service) GetBudgetByID(ctx context.Context, id uint64) (*budget.Budget, error) {
+// GetBudgetByID mengambil satu data budget dan menyertakan perhitungan real-time dari transaksi
+func (s *Service) GetBudgetByID(ctx context.Context, id uint64) (*BudgetDetailResponse, error) {
 	b, err := s.repo.FindByID(ctx, budget.BudgetID(id))
 	if err != nil {
 		return nil, err
 	}
-	return b, nil
+
+	// Ambil total pengeluaran dari transaksi
+	totalSpent, _ := s.repo.CalculateTotalSpent(ctx, uint64(b.UserID()), uint64(b.CategoryID()), b.Month(), b.Year())
+
+	return &BudgetDetailResponse{
+		ID:            uint64(b.ID()),
+		UserID:        uint64(b.UserID()),
+		CategoryID:    uint64(b.CategoryID()),
+		Month:         b.Month(),
+		Year:          b.Year(),
+		MaxAmount:     b.Amount(),
+		CurrentAmount: totalSpent,
+		Remaining:     b.Amount() - totalSpent,
+	}, nil
 }
 
-// GetBudgetsByMonth mengambil semua budget milik user pada bulan dan tahun tertentu
-func (s *Service) GetBudgetsByMonth(ctx context.Context, userID uint64, month int, year int) ([]*budget.Budget, error) {
+// GetBudgetsByMonth mengambil semua budget user per bulan dan mengkonversinya ke list DTO
+func (s *Service) GetBudgetsByMonth(ctx context.Context, userID uint64, month int, year int) ([]*BudgetDetailResponse, error) {
 	budgets, err := s.repo.FindByUserAndMonth(ctx, budget.UserID(userID), month, year)
 	if err != nil {
 		return nil, err
@@ -96,18 +126,33 @@ func (s *Service) GetBudgetsByMonth(ctx context.Context, userID uint64, month in
 		return nil, errors.New("no budgets found for this month")
 	}
 
-	return budgets, nil
+	var responses []*BudgetDetailResponse
+	for _, b := range budgets {
+		// Looping untuk menghitung pengeluaran tiap-tiap kategori budget
+		totalSpent, _ := s.repo.CalculateTotalSpent(ctx, uint64(b.UserID()), uint64(b.CategoryID()), b.Month(), b.Year())
+
+		responses = append(responses, &BudgetDetailResponse{
+			ID:            uint64(b.ID()),
+			UserID:        uint64(b.UserID()),
+			CategoryID:    uint64(b.CategoryID()),
+			Month:         b.Month(),
+			Year:          b.Year(),
+			MaxAmount:     b.Amount(),
+			CurrentAmount: totalSpent,
+			Remaining:     b.Amount() - totalSpent,
+		})
+	}
+
+	return responses, nil
 }
 
 // UpdateBudget memperbarui data budget (Kategori, Bulan, Tahun, Jumlah)
 func (s *Service) UpdateBudget(ctx context.Context, input BudgetUpdateInput) error {
-	// 1. Cari data aslinya dulu
 	existingBudget, err := s.repo.FindByID(ctx, budget.BudgetID(input.ID))
 	if err != nil {
 		return err
 	}
 
-	// 2. Cek apakah ada perubahan yang bisa menyebabkan duplikasi (ganti kategori atau bulan)
 	if existingBudget.CategoryID() != budget.CategoryID(input.CategoryID) ||
 		existingBudget.Month() != input.Month ||
 		existingBudget.Year() != input.Year {
@@ -120,13 +165,11 @@ func (s *Service) UpdateBudget(ctx context.Context, input BudgetUpdateInput) err
 			input.Year,
 		)
 
-		// Jika ketemu budget lain dengan kategori/bulan/tahun yang sama, tolak update
 		if err == nil && checkDuplicate != nil && checkDuplicate.ID() != existingBudget.ID() {
 			return errors.New("another budget for this category and month already exists")
 		}
 	}
 
-	// 3. Update nilai di Entity
 	err = existingBudget.UpdateBudget(
 		budget.CategoryID(input.CategoryID),
 		input.Month,
@@ -137,7 +180,6 @@ func (s *Service) UpdateBudget(ctx context.Context, input BudgetUpdateInput) err
 		return err
 	}
 
-	// 4. Simpan perubahan ke database
 	return s.repo.Update(ctx, existingBudget)
 }
 

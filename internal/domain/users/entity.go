@@ -89,12 +89,6 @@ func (u *User) UpdateUser(
 	if username == "" {
 		return errors.New("invalid users name")
 	}
-	if email == "" {
-		return errors.New("invalid users email")
-	}
-	if isActive == u.isActive {
-		return errors.New("User Status Cant Be The Same As Before")
-	}
 	if password == "" {
 		return errors.New("invalid users password")
 	}

@@ -18,12 +18,38 @@ func NewBudgetRepo(db *sql.DB) *BudgetRepo {
 	return &BudgetRepo{db: db}
 }
 
-func (r *BudgetRepo) Save(ctx context.Context, b *budget.Budget) error {
+// Pastikan package dan nama struct disesuaikan dengan Repository Transaction lu
+// Misalnya: func (r *TransactionRepo) CalculateTotalSpent(...)
+
+func (r *BudgetRepo) CalculateTotalSpent(ctx context.Context, userID uint64, categoryID uint64, month int, year int) (int64, error) {
+	query := `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM transactions
+		WHERE user_id = $1 
+		  AND category_id = $2 
+		  AND transaction_type = 'expense'
+		  AND EXTRACT(MONTH FROM transaction_date) = $3
+		  AND EXTRACT(YEAR FROM transaction_date) = $4
+	`
+
+	var totalSpent int64
+
+	// Eksekusi query
+	err := r.db.QueryRowContext(ctx, query, userID, categoryID, month, year).Scan(&totalSpent)
+	if err != nil {
+		// Kalau error bukan karena data kosong, return error-nya
+		return 0, err
+	}
+
+	return totalSpent, nil
+}
+
+func (r *BudgetRepo) Save(ctx context.Context, b *budget.Budget) (budget.BudgetID, error) {
 	query := `
 		INSERT INTO budgets (user_id, category_id, month, year, amount, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
-	_, err := r.db.ExecContext(
+	row := r.db.QueryRowContext(ctx, query,
 		ctx, query,
 		b.UserID(),
 		b.CategoryID(),
@@ -34,10 +60,14 @@ func (r *BudgetRepo) Save(ctx context.Context, b *budget.Budget) error {
 		b.UpdatedAt(),
 	)
 
+	var budgetID uint64
+
+	err := row.Scan(&budgetID)
+
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return nil
+	return budget.BudgetID(budgetID), nil
 }
 
 func (r *BudgetRepo) FindByID(ctx context.Context, id budget.BudgetID) (*budget.Budget, error) {

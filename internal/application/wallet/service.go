@@ -3,12 +3,14 @@ package wallet
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 	"walletwise/internal/domain/wallet"
 )
 
 type WalletInput struct {
+	ID         uint64
 	UserID     uint64 // Ubah dari userId ke UserID
 	WalletName string // Ubah dari walletName ke WalletName
 	WalletType string // Ubah dari walletType ke WalletType
@@ -107,11 +109,12 @@ func (w *Service) UpdateWallet(ctx context.Context, walletUpdate WalletUpdateInp
 }
 
 func (w *Service) DeleteWallet(ctx context.Context, input WalletInput) error {
-	checkWallet, err := w.repo.SearchByID(ctx, wallet.WalletID(input.UserID))
+	checkWallet, err := w.repo.SearchByID(ctx, wallet.WalletID(input.ID))
 	if err != nil {
 		return errors.New("Wallet Tidak Ditemukan")
 	}
-
+	fmt.Print(checkWallet.UserID())
+	fmt.Println(wallet.UserID(input.UserID))
 	if checkWallet.UserID() != wallet.UserID(input.UserID) {
 		return errors.New("Invalid User Wallet")
 	}

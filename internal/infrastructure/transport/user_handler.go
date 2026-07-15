@@ -2,6 +2,7 @@ package transport
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -116,6 +117,7 @@ func (u *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	// Ambil ID dari URL (Standar REST: PUT /users/{id})
 	idString := r.PathValue("id")
 	userId, err := strconv.ParseUint(idString, 10, 64)
+	fmt.Println(userId)
 	if err != nil {
 		WriteJson(w, http.StatusBadRequest, "Invalid ID format", nil)
 		return
@@ -135,7 +137,6 @@ func (u *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		MonthlyLimit: req.MonthlyLimit,
 		IsActive:     req.IsActive,
 	}
-
 	err = u.service.UpdateUser(r.Context(), input)
 	if err != nil {
 		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
