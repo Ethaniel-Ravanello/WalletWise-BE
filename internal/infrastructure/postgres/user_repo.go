@@ -3,8 +3,9 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"fmt"
 	"time"
+
 	"walletwise/internal/domain/users"
 )
 
@@ -12,128 +13,148 @@ type UserRepo struct {
 	db *sql.DB
 }
 
-func NewUserRepo(db *sql.DB) *UserRepo { return &UserRepo{db: db} }
+func NewUserRepo(db *sql.DB) *UserRepo {
+	return &UserRepo{db: db}
+}
 
 var _ users.Repository = (*UserRepo)(nil)
 
-func (u UserRepo) Save(ctx context.Context, user *users.User) error {
-	const sql = `INSERT INTO users (username, email, password, monthly_limit, is_active, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+func (r *UserRepo) Save(ctx context.Context, u *users.User) error {
+	query := `INSERT INTO users (username, email, password, monthly_limit, is_active, created_at, updated_at) 
+	          VALUES ($1, $2, $3, $4, $5, $6, $7)`
 
-	_, err := u.db.ExecContext(ctx, sql,
-		user.Username(),
-		user.Email(),
-		user.Password(),
-		user.MonthlyLimit(),
-		true,
+	_, err := r.db.ExecContext(ctx, query,
+		u.Username(),
+		u.Email(),
+		u.Password(),
+		u.MonthlyLimit(),
+		u.IsActive(),
 		time.Now(),
 		time.Now(),
 	)
 	if err != nil {
-		return errors.New("cannot save users: " + err.Error())
+		return fmt.Errorf("failed to save user: %w", err)
 	}
 	return nil
 }
 
-func (u UserRepo) FindByID(ctx context.Context, id users.UserID) (*users.User, error) {
-	const sql = `SELECT id, username, email, password, monthly_limit, is_active, created_at, updated_at FROM users WHERE id = $1`
+func (r *UserRepo) FindByID(ctx context.Context, id users.UserID) (*users.User, error) {
+	query := `SELECT id, username, email, password, monthly_limit, is_active, created_at, updated_at 
+	          FROM users WHERE id = $1`
 
 	var (
-		userID        uint64
-		username      string
-		email         string
-		password      string
-		monthly_limit uint64
-		isActive      bool
-		createdAt     time.Time
-		updatedAt     time.Time
+		userID       uint64
+		username     string
+		email        string
+		password     string
+		monthlyLimit uint64
+		isActive     bool
+		createdAt    time.Time
+		updatedAt    time.Time
 	)
-	row := u.db.QueryRowContext(ctx, sql, id)
+
+	row := r.db.QueryRowContext(ctx, query, id)
 	err := row.Scan(
 		&userID,
 		&username,
 		&email,
 		&password,
-		&monthly_limit,
+		&monthlyLimit,
 		&isActive,
 		&createdAt,
-		&updatedAt)
+		&updatedAt,
+	)
 	if err != nil {
-		return nil, errors.New("cannot find users: " + err.Error())
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("user not found: %w", err)
+		}
+		return nil, fmt.Errorf("failed to find user by id: %w", err)
 	}
-	users := users.ReconstituteUser(
+
+	u := users.ReconstituteUser(
 		users.UserID(userID),
 		username,
 		email,
 		password,
-		users.MonthlyLimit(monthly_limit),
+		users.MonthlyLimit(monthlyLimit),
 		isActive,
 		createdAt,
-		updatedAt)
-	return users, nil
+		updatedAt,
+	)
+	return u, nil
 }
 
-func (u UserRepo) FindByEmail(ctx context.Context, email string) (*users.User, error) {
-	const sql = `SELECT id, username, email, password, monthly_limit, is_active, created_at, updated_at FROM users WHERE email = $1`
+func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*users.User, error) {
+	query := `SELECT id, username, email, password, monthly_limit, is_active, created_at, updated_at 
+	          FROM users WHERE email = $1`
 
 	var (
-		userID        uint64
-		username      string
-		emailHolder   string
-		password      string
-		monthly_limit uint64
-		isActive      bool
-		createdAt     time.Time
-		updatedAt     time.Time
+		userID       uint64
+		username     string
+		emailHolder  string
+		password     string
+		monthlyLimit uint64
+		isActive     bool
+		createdAt    time.Time
+		updatedAt    time.Time
 	)
-	row := u.db.QueryRowContext(ctx, sql, email)
+
+	row := r.db.QueryRowContext(ctx, query, email)
 	err := row.Scan(
 		&userID,
 		&username,
 		&emailHolder,
 		&password,
-		&monthly_limit,
+		&monthlyLimit,
 		&isActive,
 		&createdAt,
-		&updatedAt)
+		&updatedAt,
+	)
 	if err != nil {
-		return nil, errors.New("cannot find users: " + err.Error())
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("user not found: %w", err)
+		}
+		return nil, fmt.Errorf("failed to find user by email: %w", err)
 	}
-	users := users.ReconstituteUser(
+
+	u := users.ReconstituteUser(
 		users.UserID(userID),
 		username,
-		email,
+		emailHolder,
 		password,
-		users.MonthlyLimit(monthly_limit),
+		users.MonthlyLimit(monthlyLimit),
 		isActive,
 		createdAt,
 		updatedAt,
 	)
-	return users, nil
+	return u, nil
 }
 
-func (u UserRepo) Update(ctx context.Context, user *users.User) error {
-	const sql = `UPDATE users SET username=$1, email=$2, password=$3, monthly_limit=$4, is_active=$5, updated_at = $6 where id = $7`
+func (r *UserRepo) Update(ctx context.Context, u *users.User) error {
+	query := `UPDATE users SET username = $1, email = $2, password = $3, monthly_limit = $4, is_active = $5, updated_at = $6 
+	          WHERE id = $7`
 
-	_, err := u.db.ExecContext(ctx, sql,
-		user.Username(),
-		user.Email(),
-		user.Password(),
-		user.MonthlyLimit(),
-		user.IsActive(),
+	_, err := r.db.ExecContext(ctx, query,
+		u.Username(),
+		u.Email(),
+		u.Password(),
+		u.MonthlyLimit(),
+		u.IsActive(),
 		time.Now(),
-		user.UserID())
+		u.UserID(),
+	)
 	if err != nil {
-		return errors.New("cannot update users: " + err.Error())
+		return fmt.Errorf("failed to update user: %w", err)
 	}
 	return nil
 }
 
-func (u UserRepo) Delete(ctx context.Context, user *users.User) error {
-	const sql = `DELETE FROM users WHERE id = $1`
+func (r *UserRepo) Delete(ctx context.Context, u *users.User) error {
+	query := `DELETE FROM users WHERE id = $1`
 
-	_, err := u.db.ExecContext(ctx, sql, user.UserID())
+	_, err := r.db.ExecContext(ctx, query, u.UserID())
 	if err != nil {
-		return errors.New("cannot delete users: " + err.Error())
+		return fmt.Errorf("failed to delete user: %w", err)
 	}
 	return nil
 }

@@ -5,18 +5,15 @@ import (
 	"net/http"
 	"strconv"
 
-	// Sesuaikan path import lu ya
 	service "walletwise/internal/application/budget"
 )
-
-// --- DTO Inputs ---
 
 type CreateBudgetRequest struct {
 	UserID     uint64 `json:"user_id"`
 	CategoryID uint64 `json:"category_id"`
 	Month      int    `json:"month"`
 	Year       int    `json:"year"`
-	Amount     int64  `json:"amount"` // Ini akan dibaca sebagai Target/Max Amount
+	Amount     int64  `json:"amount"`
 }
 
 type UpdateBudgetRequest struct {
@@ -26,21 +23,23 @@ type UpdateBudgetRequest struct {
 	Amount     int64  `json:"amount"`
 }
 
-// --- Handler ---
-
 type BudgetHandler struct {
-	service *service.Service
+	svc *service.Service
 }
 
-func NewBudgetHandler(s *service.Service) *BudgetHandler {
-	return &BudgetHandler{service: s}
+func NewBudgetHandler(svc *service.Service) *BudgetHandler {
+	return &BudgetHandler{svc: svc}
 }
 
-// CreateBudget menangani pembuatan budget baru (POST)
 func (h *BudgetHandler) CreateBudget(w http.ResponseWriter, r *http.Request) {
 	var req CreateBudgetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid request payload", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid request payload", nil)
+		return
+	}
+
+	if req.UserID == 0 || req.CategoryID == 0 || req.Month == 0 || req.Year == 0 {
+		WriteJSON(w, http.StatusBadRequest, "user_id, category_id, month, and year are required", nil)
 		return
 	}
 
@@ -52,74 +51,77 @@ func (h *BudgetHandler) CreateBudget(w http.ResponseWriter, r *http.Request) {
 		Amount:     req.Amount,
 	}
 
-	// 'b' sekarang adalah *service.BudgetDetailResponse yang udah ada current_amount & remaining-nya
-	b, err := h.service.CreateBudget(r.Context(), input)
+	b, err := h.svc.CreateBudget(r.Context(), input)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	WriteJson(w, http.StatusCreated, "Success create budget", b)
+	WriteJSON(w, http.StatusCreated, "Budget created successfully", b)
 }
 
-// GetBudgetByID mengambil detail satu budget (GET)
 func (h *BudgetHandler) GetBudgetByID(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	budgetID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid budget ID format", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid budget ID format", nil)
 		return
 	}
 
-	// Langsung dapat DTO lengkap dari service
-	b, err := h.service.GetBudgetByID(r.Context(), budgetID)
+	b, err := h.svc.GetBudgetByID(r.Context(), budgetID)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusNotFound, "Budget not found", nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "Success get budget", b)
+	WriteJSON(w, http.StatusOK, "Budget retrieved successfully", b)
 }
 
-// GetBudgetsByMonth mengambil daftar budget user di bulan tertentu (GET)
 func (h *BudgetHandler) GetBudgetsByMonth(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	userID, _ := strconv.ParseUint(q.Get("user_id"), 10, 64)
-	month, _ := strconv.Atoi(q.Get("month"))
-	year, _ := strconv.Atoi(q.Get("year"))
+	queryParams := r.URL.Query()
 
-	if userID == 0 || month == 0 || year == 0 {
-		WriteJson(w, http.StatusBadRequest, "user_id, month, and year query parameters are required", nil)
+	userIDStr := queryParams.Get("user_id")
+	monthStr := queryParams.Get("month")
+	yearStr := queryParams.Get("year")
+
+	if userIDStr == "" || monthStr == "" || yearStr == "" {
+		WriteJSON(w, http.StatusBadRequest, "user_id, month, and year query parameters are required", nil)
 		return
 	}
 
-	// Langsung dapat slice []*service.BudgetDetailResponse
-	budgets, err := h.service.GetBudgetsByMonth(r.Context(), userID, month, year)
+	userID, err1 := strconv.ParseUint(userIDStr, 10, 64)
+	month, err2 := strconv.Atoi(monthStr)
+	year, err3 := strconv.Atoi(yearStr)
+
+	if err1 != nil || err2 != nil || err3 != nil {
+		WriteJSON(w, http.StatusBadRequest, "Invalid user_id, month, or year format", nil)
+		return
+	}
+
+	budgets, err := h.svc.GetBudgetsByMonth(r.Context(), userID, month, year)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	// Antisipasi jika data kosong agar output JSON jadi [] bukan null
 	if budgets == nil {
 		budgets = []*service.BudgetDetailResponse{}
 	}
 
-	WriteJson(w, http.StatusOK, "Success get budgets", budgets)
+	WriteJSON(w, http.StatusOK, "Budgets retrieved successfully", budgets)
 }
 
-// UpdateBudget memperbarui data budget (PUT/PATCH)
 func (h *BudgetHandler) UpdateBudget(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	budgetID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid budget ID format", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid budget ID format", nil)
 		return
 	}
 
 	var req UpdateBudgetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid request payload", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid request payload", nil)
 		return
 	}
 
@@ -131,27 +133,28 @@ func (h *BudgetHandler) UpdateBudget(w http.ResponseWriter, r *http.Request) {
 		Amount:     req.Amount,
 	}
 
-	if err := h.service.UpdateBudget(r.Context(), input); err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+	if err := h.svc.UpdateBudget(r.Context(), input); err != nil {
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "Success update budget", nil)
+	WriteJSON(w, http.StatusOK, "Budget updated successfully", nil)
 }
 
-// DeleteBudget menghapus data budget (DELETE)
 func (h *BudgetHandler) DeleteBudget(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	budgetID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid budget ID format", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid budget ID format", nil)
 		return
 	}
 
-	if err := h.service.DeleteBudget(r.Context(), budgetID); err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+	if err := h.svc.DeleteBudget(r.Context(), budgetID); err != nil {
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "Success delete budget", nil)
+	WriteJSON(w, http.StatusOK, "Budget deleted successfully", nil)
 }
+
+

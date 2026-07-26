@@ -20,20 +20,20 @@ type Wallet struct {
 }
 
 func NewWallet(userID UserID, walletName string, walletType string, balance Balance, createdAt time.Time, updatedAt time.Time) (*Wallet, error) {
-	if userID <= 0 {
-		return nil, errors.New(`invalid user id`)
+	if userID == 0 {
+		return nil, errors.New("user ID is required")
 	}
 	if walletName == "" {
-		return nil, errors.New(`invalid name`)
+		return nil, errors.New("wallet name is required")
 	}
 	if walletType == "" {
-		return nil, errors.New(`invalid wallet type`)
+		return nil, errors.New("wallet type is required")
 	}
 	if createdAt.IsZero() {
-		return nil, errors.New(`invalid creation date`)
+		createdAt = time.Now()
 	}
 	if updatedAt.IsZero() {
-		return nil, errors.New(`invalid update date`)
+		updatedAt = time.Now()
 	}
 	return &Wallet{
 		userID:     userID,
@@ -52,7 +52,8 @@ func ReconstituteWallet(
 	walletType string,
 	balance Balance,
 	createdAt time.Time,
-	updatedAt time.Time) *Wallet {
+	updatedAt time.Time,
+) *Wallet {
 	return &Wallet{
 		id:         id,
 		userID:     userID,
@@ -64,24 +65,24 @@ func ReconstituteWallet(
 	}
 }
 
-func (w *Wallet) UpdateWallet(id WalletID, userId UserID, walletName string, walletType string, balance Balance, createdAt time.Time, updatedAt time.Time) error {
-	if userId <= 0 {
-		return errors.New(`invalid user id`)
+func (w *Wallet) UpdateWallet(id WalletID, userID UserID, walletName string, walletType string, balance Balance, createdAt time.Time, updatedAt time.Time) error {
+	if userID == 0 {
+		return errors.New("user ID is required")
 	}
 	if walletName == "" {
-		return errors.New(`invalid name`)
+		return errors.New("wallet name is required")
 	}
 	if walletType == "" {
-		return errors.New(`invalid wallet type`)
+		return errors.New("wallet type is required")
 	}
 	if createdAt.IsZero() {
-		return errors.New(`invalid creation date`)
+		createdAt = w.createdAt
 	}
 	if updatedAt.IsZero() {
-		return errors.New(`invalid update date`)
+		updatedAt = time.Now()
 	}
-	w.userID = userId
 	w.id = id
+	w.userID = userID
 	w.walletName = walletName
 	w.walletType = walletType
 	w.balance = balance
@@ -97,3 +98,4 @@ func (w *Wallet) WalletType() string   { return w.walletType }
 func (w *Wallet) Balance() Balance     { return w.balance }
 func (w *Wallet) CreatedAt() time.Time { return w.createdAt }
 func (w *Wallet) UpdatedAt() time.Time { return w.updatedAt }
+

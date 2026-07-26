@@ -11,5 +11,6 @@ type Repository interface {
 	FindByUserAndCategory(ctx context.Context, userID UserID, categoryID CategoryID, month int, year int) (*Budget, error)
 	Update(ctx context.Context, budget *Budget) error
 	Delete(ctx context.Context, id BudgetID) error
-	CalculateTotalSpent(ctx context.Context, userID uint64, categoryID uint64, month int, year int) (int64, error)
+	CalculateTotalSpent(ctx context.Context, userID UserID, categoryID CategoryID, month int, year int) (int64, error)
 }
+

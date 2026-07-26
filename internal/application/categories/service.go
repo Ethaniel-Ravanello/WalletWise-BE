@@ -12,8 +12,8 @@ type Service struct {
 
 func NewService(repo categories.Repository) *Service { return &Service{repo: repo} }
 
-func (c *Service) GetAllCategories(ctx context.Context) ([]categories.Categories, error) {
-	allCategories, err := c.GetAllCategories(ctx)
+func (c *Service) GetAllCategories(ctx context.Context) ([]*categories.Categories, error) {
+	allCategories, err := c.repo.SearchAll(ctx)
 
 	if err != nil {
 		return nil, errors.New("cannot get all categories: " + err.Error())

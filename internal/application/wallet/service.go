@@ -11,18 +11,18 @@ import (
 
 type WalletInput struct {
 	ID         uint64
-	UserID     uint64 // Ubah dari userId ke UserID
-	WalletName string // Ubah dari walletName ke WalletName
-	WalletType string // Ubah dari walletType ke WalletType
-	Balance    uint64 // Ubah dari balance ke Balance
+	UserID     uint64
+	WalletName string
+	WalletType string
+	Balance    uint64
 }
 
 type WalletUpdateInput struct {
 	ID         uint64
-	UserID     uint64 // Kapital
-	WalletName string // Kapital
-	WalletType string // Kapital
-	Balance    uint64 // Kapital
+	UserID     uint64
+	WalletName string
+	WalletType string
+	Balance    uint64
 }
 type Service struct {
 	repo wallet.Repository

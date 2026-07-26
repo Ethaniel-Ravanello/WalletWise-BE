@@ -31,10 +31,10 @@ func NewBudget(
 ) (*Budget, error) {
 
 	if userID == 0 {
-		return nil, errors.New("user id required")
+		return nil, errors.New("user ID is required")
 	}
 	if categoryID == 0 {
-		return nil, errors.New("category id required")
+		return nil, errors.New("category ID is required")
 	}
 	if month < 1 || month > 12 {
 		return nil, errors.New("invalid month")
@@ -46,10 +46,10 @@ func NewBudget(
 		return nil, errors.New("amount must be greater than zero")
 	}
 	if createdAt.IsZero() {
-		return nil, errors.New("created_at required")
+		return nil, errors.New("created_at time is required")
 	}
 	if updatedAt.IsZero() {
-		return nil, errors.New("updated_at required")
+		return nil, errors.New("updated_at time is required")
 	}
 
 	return &Budget{
@@ -92,7 +92,7 @@ func (b *Budget) UpdateBudget(
 	amount int64,
 ) error {
 	if categoryID == 0 {
-		return errors.New("category id required")
+		return errors.New("category ID is required")
 	}
 	if month < 1 || month > 12 {
 		return errors.New("invalid month")
@@ -113,7 +113,6 @@ func (b *Budget) UpdateBudget(
 	return nil
 }
 
-// Getters
 func (b *Budget) ID() BudgetID           { return b.id }
 func (b *Budget) UserID() UserID         { return b.userID }
 func (b *Budget) CategoryID() CategoryID { return b.categoryID }
@@ -122,3 +121,4 @@ func (b *Budget) Year() int              { return b.year }
 func (b *Budget) Amount() int64          { return b.amount }
 func (b *Budget) CreatedAt() time.Time   { return b.createdAt }
 func (b *Budget) UpdatedAt() time.Time   { return b.updatedAt }
+

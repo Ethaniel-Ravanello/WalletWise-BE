@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
+	"walletwise/internal/application/saving_goal"
 	"walletwise/internal/domain/transaction"
 )
 
@@ -42,7 +44,9 @@ type GetTransactionsInput struct {
 }
 
 type Service struct {
-	repo transaction.Repository
+	repo        transaction.Repository
+	db          *sql.DB
+	goalService saving_goal.Service
 }
 
 func NewService(repo transaction.Repository) *Service {
@@ -50,10 +54,16 @@ func NewService(repo transaction.Repository) *Service {
 }
 
 func (s *Service) CreateTransaction(ctx context.Context, input *TrxInput) (*transaction.Transaction, error) {
-	newGoalID := transaction.GoalID(input.GoalID)
+
+	var goalIDPtr *transaction.GoalID
+	if input.GoalID != 0 {
+		gID := transaction.GoalID(input.GoalID)
+		goalIDPtr = &gID
+	}
+
 	tx, err := transaction.NewTransaction(
 		transaction.UserID(input.UserID),
-		&newGoalID,
+		goalIDPtr,
 		transaction.Money(input.Amount),
 		transaction.CategoryID(input.CategoryID),
 		input.Description,
@@ -79,15 +89,15 @@ func (s *Service) GetTransaction(ctx context.Context, input *GetTransactionsInpu
 	newWalletID := transaction.WalletID(*input.WalletID)
 
 	trx, err := s.repo.Search(ctx, transaction.FilterTrx{
-		UserID:           transaction.UserID(input.UserID),
-		GoalID:           &newGoalID,
-		Amount:           &newAmount,
-		CategoryId:       &newCategoryID,
-		TransactionTypes: &newTrasactionType,
-		WalletID:         &newWalletID,
-		StartDate:        input.StartDate,
-		EndDate:          input.EndDate,
-		Limit:            input.Limit,
+		UserID:          transaction.UserID(input.UserID),
+		GoalID:          &newGoalID,
+		Amount:          &newAmount,
+		CategoryID:      &newCategoryID,
+		TransactionType: &newTrasactionType,
+		WalletID:        &newWalletID,
+		StartDate:       input.StartDate,
+		EndDate:         input.EndDate,
+		Limit:           input.Limit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error getting transaction: %w", err)
@@ -110,10 +120,14 @@ func (s *Service) UpdateTransaction(ctx context.Context, input *TrxUpdate) error
 		return fmt.Errorf("error getting transaction: %w", err)
 	}
 
-	newGoalID := transaction.GoalID(input.ID)
+	var newGoalID *transaction.GoalID
+	if input.GoalID != 0 {
+		gID := transaction.GoalID(input.GoalID)
+		newGoalID = &gID
+	}
 
 	err = existingTrx.UpdateDetails(
-		&newGoalID,
+		newGoalID,
 		transaction.Money(input.Amount),
 		transaction.CategoryID(input.CategoryID),
 		input.Description,
@@ -124,7 +138,6 @@ func (s *Service) UpdateTransaction(ctx context.Context, input *TrxUpdate) error
 		return fmt.Errorf("error updating transaction: %w", err)
 	}
 	return s.repo.Update(ctx, existingTrx)
-
 }
 
 func (s *Service) DeleteTransaction(ctx context.Context, trxId transaction.TransactionID) error {

@@ -2,7 +2,6 @@ package transport
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -10,8 +9,6 @@ import (
 	service "walletwise/internal/application/user"
 	"walletwise/internal/domain/users"
 )
-
-// --- DTO / Response Structs ---
 
 type UserResponse struct {
 	ID           uint64    `json:"id"`
@@ -39,22 +36,23 @@ type UpdateUserRequest struct {
 	IsActive     bool   `json:"is_active"`
 }
 
-// --- Handler ---
-
 type UserHandler struct {
-	service *service.Service
+	svc *service.Service
 }
 
-func NewUserHandler(service *service.Service) *UserHandler {
-	return &UserHandler{service: service}
+func NewUserHandler(svc *service.Service) *UserHandler {
+	return &UserHandler{svc: svc}
 }
 
-func (u *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
+func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var req CreateUserRequest
-
-	// PERBAIKAN: Menggunakan Decoder untuk membaca Request Body, bukan Encoder
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid request payload", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid request payload", nil)
+		return
+	}
+
+	if req.Username == "" || req.Email == "" || req.Password == "" {
+		WriteJSON(w, http.StatusBadRequest, "username, email, and password are required", nil)
 		return
 	}
 
@@ -66,112 +64,108 @@ func (u *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		IsActive:     req.IsActive,
 	}
 
-	user, err := u.service.CreateUser(r.Context(), input)
+	user, err := h.svc.CreateUser(r.Context(), input)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	WriteJson(w, http.StatusCreated, "User Created", toUserResponse(user))
+	WriteJSON(w, http.StatusCreated, "User created successfully", toUserResponse(user))
 }
 
-func (u *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
-	idString := r.PathValue("id")
-	if idString == "" {
-		WriteJson(w, http.StatusBadRequest, "ID parameter is required", nil)
+func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	if idStr == "" {
+		WriteJSON(w, http.StatusBadRequest, "User ID parameter is required", nil)
 		return
 	}
 
-	userId, err := strconv.ParseUint(idString, 10, 64)
+	userID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid ID format", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid user ID format", nil)
 		return
 	}
 
-	user, err := u.service.SearchUserById(r.Context(), users.UserID(userId))
+	user, err := h.svc.SearchUserById(r.Context(), users.UserID(userID))
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusNotFound, "User not found", nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "User Found", toUserResponse(user))
+	WriteJSON(w, http.StatusOK, "User retrieved successfully", toUserResponse(user))
 }
 
-func (u *UserHandler) GetUserByEmail(w http.ResponseWriter, r *http.Request) {
+func (h *UserHandler) GetUserByEmail(w http.ResponseWriter, r *http.Request) {
 	email := r.PathValue("email")
 	if email == "" {
-		WriteJson(w, http.StatusBadRequest, "Email parameter is required", nil)
+		WriteJSON(w, http.StatusBadRequest, "Email parameter is required", nil)
 		return
 	}
 
-	userEntity, err := u.service.SearchUserByEmail(r.Context(), email)
+	user, err := h.svc.SearchUserByEmail(r.Context(), email)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusNotFound, "User not found", nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "User Found", toUserResponse(userEntity))
+	WriteJSON(w, http.StatusOK, "User retrieved successfully", toUserResponse(user))
 }
 
-func (u *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
-	// Ambil ID dari URL (Standar REST: PUT /users/{id})
-	idString := r.PathValue("id")
-	userId, err := strconv.ParseUint(idString, 10, 64)
-	fmt.Println(userId)
+func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	userID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid ID format", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid user ID format", nil)
 		return
 	}
 
 	var req UpdateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid request payload", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid request payload", nil)
 		return
 	}
 
 	input := &service.UserUpdateInput{
-		ID:           userId,
+		ID:           userID,
 		Username:     req.Username,
 		Email:        req.Email,
 		Password:     req.Password,
 		MonthlyLimit: req.MonthlyLimit,
 		IsActive:     req.IsActive,
 	}
-	err = u.service.UpdateUser(r.Context(), input)
-	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+
+	if err := h.svc.UpdateUser(r.Context(), input); err != nil {
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "User Updated", nil)
+	WriteJSON(w, http.StatusOK, "User updated successfully", nil)
 }
 
-func (u *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
-	// Ambil ID dari URL (Standar REST: DELETE /users/{id})
-	idString := r.PathValue("id")
-	userId, err := strconv.ParseUint(idString, 10, 64)
+func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	userID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid ID format", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid user ID format", nil)
 		return
 	}
 
 	input := service.UserUpdateInput{
-		ID: userId,
+		ID: userID,
 	}
 
-	err = u.service.DeleteUser(r.Context(), input)
-	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+	if err := h.svc.DeleteUser(r.Context(), input); err != nil {
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "User Deleted", nil)
+	WriteJSON(w, http.StatusOK, "User deleted successfully", nil)
 }
 
-// --- Helper Functions ---
-
-// toUserResponse memetakan Entity User ke Struct Response API
 func toUserResponse(user *users.User) UserResponse {
+	if user == nil {
+		return UserResponse{}
+	}
 	return UserResponse{
 		ID:           uint64(user.UserID()),
 		Username:     user.Username(),
@@ -182,3 +176,5 @@ func toUserResponse(user *users.User) UserResponse {
 		UpdatedAt:    user.UpdatedAt(),
 	}
 }
+
+

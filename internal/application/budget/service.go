@@ -5,11 +5,9 @@ import (
 	"errors"
 	"time"
 
-	// Sesuaikan path import domain budget lu
 	"walletwise/internal/domain/budget"
 )
 
-// --- DTO Inputs ---
 type BudgetInput struct {
 	UserID     uint64
 	CategoryID uint64
@@ -47,7 +45,6 @@ func NewService(repo budget.Repository) *Service {
 	}
 }
 
-// CreateBudget membuat budget baru dan mengembalikan detail DTO-nya
 func (s *Service) CreateBudget(ctx context.Context, input BudgetInput) (*BudgetDetailResponse, error) {
 	existingBudget, err := s.repo.FindByUserAndCategory(
 		ctx,
@@ -75,9 +72,12 @@ func (s *Service) CreateBudget(ctx context.Context, input BudgetInput) (*BudgetD
 	}
 
 	walletId, err := s.repo.Save(ctx, newBudget)
+	if err != nil {
+		return nil, err
+	}
+	_ = walletId
 
-	// Hitung pengeluaran (berjaga-jaga jika user membuat budget secara retroaktif untuk transaksi yang sudah ada)
-	totalSpent, err := s.repo.CalculateTotalSpent(ctx, uint64(walletId), input.CategoryID, input.Month, input.Year)
+	totalSpent, err := s.repo.CalculateTotalSpent(ctx, budget.UserID(input.UserID), budget.CategoryID(input.CategoryID), input.Month, input.Year)
 	if err != nil {
 		return nil, err
 	}
@@ -93,15 +93,13 @@ func (s *Service) CreateBudget(ctx context.Context, input BudgetInput) (*BudgetD
 	}, nil
 }
 
-// GetBudgetByID mengambil satu data budget dan menyertakan perhitungan real-time dari transaksi
 func (s *Service) GetBudgetByID(ctx context.Context, id uint64) (*BudgetDetailResponse, error) {
 	b, err := s.repo.FindByID(ctx, budget.BudgetID(id))
 	if err != nil {
 		return nil, err
 	}
 
-	// Ambil total pengeluaran dari transaksi
-	totalSpent, _ := s.repo.CalculateTotalSpent(ctx, uint64(b.UserID()), uint64(b.CategoryID()), b.Month(), b.Year())
+	totalSpent, _ := s.repo.CalculateTotalSpent(ctx, b.UserID(), b.CategoryID(), b.Month(), b.Year())
 
 	return &BudgetDetailResponse{
 		ID:            uint64(b.ID()),
@@ -115,7 +113,6 @@ func (s *Service) GetBudgetByID(ctx context.Context, id uint64) (*BudgetDetailRe
 	}, nil
 }
 
-// GetBudgetsByMonth mengambil semua budget user per bulan dan mengkonversinya ke list DTO
 func (s *Service) GetBudgetsByMonth(ctx context.Context, userID uint64, month int, year int) ([]*BudgetDetailResponse, error) {
 	budgets, err := s.repo.FindByUserAndMonth(ctx, budget.UserID(userID), month, year)
 	if err != nil {
@@ -128,8 +125,8 @@ func (s *Service) GetBudgetsByMonth(ctx context.Context, userID uint64, month in
 
 	var responses []*BudgetDetailResponse
 	for _, b := range budgets {
-		// Looping untuk menghitung pengeluaran tiap-tiap kategori budget
-		totalSpent, _ := s.repo.CalculateTotalSpent(ctx, uint64(b.UserID()), uint64(b.CategoryID()), b.Month(), b.Year())
+
+		totalSpent, _ := s.repo.CalculateTotalSpent(ctx, b.UserID(), b.CategoryID(), b.Month(), b.Year())
 
 		responses = append(responses, &BudgetDetailResponse{
 			ID:            uint64(b.ID()),
@@ -146,7 +143,6 @@ func (s *Service) GetBudgetsByMonth(ctx context.Context, userID uint64, month in
 	return responses, nil
 }
 
-// UpdateBudget memperbarui data budget (Kategori, Bulan, Tahun, Jumlah)
 func (s *Service) UpdateBudget(ctx context.Context, input BudgetUpdateInput) error {
 	existingBudget, err := s.repo.FindByID(ctx, budget.BudgetID(input.ID))
 	if err != nil {
@@ -183,7 +179,6 @@ func (s *Service) UpdateBudget(ctx context.Context, input BudgetUpdateInput) err
 	return s.repo.Update(ctx, existingBudget)
 }
 
-// DeleteBudget menghapus budget berdasarkan ID
 func (s *Service) DeleteBudget(ctx context.Context, id uint64) error {
 	return s.repo.Delete(ctx, budget.BudgetID(id))
 }

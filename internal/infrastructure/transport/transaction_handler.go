@@ -6,12 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"walletwise/internal/domain/transaction"
-	// Sesuaikan path import service Anda
 	service "walletwise/internal/application/transaction"
+	"walletwise/internal/domain/transaction"
 )
-
-// --- DTO / Response Structs ---
 
 type TransactionResponse struct {
 	ID              uint64    `json:"id"`
@@ -56,21 +53,23 @@ type CategorySpendResponse struct {
 	Total    int64  `json:"total"`
 }
 
-// --- Handler ---
-
 type TransactionHandler struct {
-	service *service.Service
+	svc *service.Service
 }
 
-func NewTransactionHandler(s *service.Service) *TransactionHandler {
-	return &TransactionHandler{service: s}
+func NewTransactionHandler(svc *service.Service) *TransactionHandler {
+	return &TransactionHandler{svc: svc}
 }
 
-// CreateTransaction menangani pembuatan transaksi baru (POST)
 func (h *TransactionHandler) CreateTransaction(w http.ResponseWriter, r *http.Request) {
 	var req CreateTransactionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid request payload", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid request payload", nil)
+		return
+	}
+
+	if req.UserID == 0 || req.WalletID == 0 || req.Amount == 0 {
+		WriteJSON(w, http.StatusBadRequest, "user_id, wallet_id, and amount are required", nil)
 		return
 	}
 
@@ -85,26 +84,29 @@ func (h *TransactionHandler) CreateTransaction(w http.ResponseWriter, r *http.Re
 		Date:            req.Date,
 	}
 
-	tx, err := h.service.CreateTransaction(r.Context(), input)
+	tx, err := h.svc.CreateTransaction(r.Context(), input)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	WriteJson(w, http.StatusCreated, "Success create transaction", toTransactionResponse(tx))
+	WriteJSON(w, http.StatusCreated, "Transaction created successfully", toTransactionResponse(tx))
 }
 
-// GetTransactions mengambil daftar transaksi berdasarkan filter (GET)
 func (h *TransactionHandler) GetTransactions(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	userID, _ := strconv.ParseUint(q.Get("user_id"), 10, 64)
+	userIDStr := q.Get("user_id")
+	if userIDStr == "" {
+		userIDStr = q.Get("userId")
+	}
+	userID, _ := strconv.ParseUint(userIDStr, 10, 64)
+
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	if limit == 0 {
-		limit = 10 // Default limit
+		limit = 10
 	}
 
-	// Inisialisasi default pointer untuk menghindari Panic (Nil-Pointer Dereference) di Service
 	var defaultZero uint64 = 0
 	var defaultStr string = ""
 
@@ -118,7 +120,6 @@ func (h *TransactionHandler) GetTransactions(w http.ResponseWriter, r *http.Requ
 		TransactionType: &defaultStr,
 	}
 
-	// Parsing parameter opsional jika ada di query string
 	if valStr := q.Get("goal_id"); valStr != "" {
 		if val, err := strconv.ParseUint(valStr, 10, 64); err == nil {
 			input.GoalID = &val
@@ -153,54 +154,48 @@ func (h *TransactionHandler) GetTransactions(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	transactions, err := h.service.GetTransaction(r.Context(), input)
+	transactions, err := h.svc.GetTransaction(r.Context(), input)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	var responses []TransactionResponse
+	responses := make([]TransactionResponse, 0, len(transactions))
 	for _, tx := range transactions {
 		responses = append(responses, toTransactionResponse(tx))
 	}
 
-	if responses == nil {
-		responses = []TransactionResponse{}
-	}
-
-	WriteJson(w, http.StatusOK, "Success get transactions", responses)
+	WriteJSON(w, http.StatusOK, "Transactions retrieved successfully", responses)
 }
 
-// GetTransactionById mengambil detail satu transaksi (GET)
 func (h *TransactionHandler) GetTransactionById(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	trxID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid transaction ID", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid transaction ID format", nil)
 		return
 	}
 
-	tx, err := h.service.GetTransactionById(r.Context(), transaction.TransactionID(trxID))
+	tx, err := h.svc.GetTransactionById(r.Context(), transaction.TransactionID(trxID))
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusNotFound, "Transaction not found", nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "Success get transaction", toTransactionResponse(tx))
+	WriteJSON(w, http.StatusOK, "Transaction retrieved successfully", toTransactionResponse(tx))
 }
 
-// UpdateTransaction memperbarui data transaksi (PUT/PATCH)
 func (h *TransactionHandler) UpdateTransaction(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	trxID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid transaction ID", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid transaction ID format", nil)
 		return
 	}
 
 	var req UpdateTransactionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid request payload", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid request payload", nil)
 		return
 	}
 
@@ -215,66 +210,83 @@ func (h *TransactionHandler) UpdateTransaction(w http.ResponseWriter, r *http.Re
 		Date:            req.Date,
 	}
 
-	if err := h.service.UpdateTransaction(r.Context(), input); err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+	if err := h.svc.UpdateTransaction(r.Context(), input); err != nil {
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "Success update transaction", nil)
+	WriteJSON(w, http.StatusOK, "Transaction updated successfully", nil)
 }
 
-// DeleteTransaction menghapus data transaksi (DELETE)
 func (h *TransactionHandler) DeleteTransaction(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	trxID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid transaction ID", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid transaction ID format", nil)
 		return
 	}
 
-	if err := h.service.DeleteTransaction(r.Context(), transaction.TransactionID(trxID)); err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+	if err := h.svc.DeleteTransaction(r.Context(), transaction.TransactionID(trxID)); err != nil {
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "Success delete transaction", nil)
+	WriteJSON(w, http.StatusOK, "Transaction deleted successfully", nil)
 }
 
-// GetUserBalance mengambil total saldo dari spesifik Wallet User (GET)
 func (h *TransactionHandler) GetUserBalance(w http.ResponseWriter, r *http.Request) {
-	userID, _ := strconv.ParseUint(r.URL.Query().Get("user_id"), 10, 64)
-	walletID, _ := strconv.ParseUint(r.URL.Query().Get("wallet_id"), 10, 64)
+	q := r.URL.Query()
+	userIDStr := q.Get("user_id")
+	if userIDStr == "" {
+		userIDStr = q.Get("userId")
+	}
+	walletIDStr := q.Get("wallet_id")
+	if walletIDStr == "" {
+		walletIDStr = q.Get("walletId")
+	}
 
-	if userID == 0 || walletID == 0 {
-		WriteJson(w, http.StatusBadRequest, "user_id and wallet_id are required", nil)
+	userID, err1 := strconv.ParseUint(userIDStr, 10, 64)
+	walletID, err2 := strconv.ParseUint(walletIDStr, 10, 64)
+
+	if err1 != nil || err2 != nil || userID == 0 || walletID == 0 {
+		WriteJSON(w, http.StatusBadRequest, "user_id and wallet_id are required", nil)
 		return
 	}
 
-	balance, err := h.service.GetUserBalance(r.Context(), userID, walletID)
+	balance, err := h.svc.GetUserBalance(r.Context(), userID, walletID)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "Success get user balance", map[string]int64{
+	res := map[string]int64{
 		"balance": int64(*balance),
-	})
+	}
+
+	WriteJSON(w, http.StatusOK, "User balance retrieved successfully", res)
 }
 
-// GetMonthlySummary mengambil total Income & Expense per bulan (GET)
 func (h *TransactionHandler) GetMonthlySummary(w http.ResponseWriter, r *http.Request) {
-	userID, _ := strconv.ParseUint(r.URL.Query().Get("user_id"), 10, 64)
-	month, _ := strconv.Atoi(r.URL.Query().Get("month"))
-	year, _ := strconv.Atoi(r.URL.Query().Get("year"))
+	q := r.URL.Query()
+	userIDStr := q.Get("user_id")
+	if userIDStr == "" {
+		userIDStr = q.Get("userId")
+	}
+	monthStr := q.Get("month")
+	yearStr := q.Get("year")
 
-	if userID == 0 || month == 0 || year == 0 {
-		WriteJson(w, http.StatusBadRequest, "user_id, month, and year are required", nil)
+	userID, err1 := strconv.ParseUint(userIDStr, 10, 64)
+	month, err2 := strconv.Atoi(monthStr)
+	year, err3 := strconv.Atoi(yearStr)
+
+	if err1 != nil || err2 != nil || err3 != nil || userID == 0 || month == 0 || year == 0 {
+		WriteJSON(w, http.StatusBadRequest, "user_id, month, and year are required", nil)
 		return
 	}
 
-	summary, err := h.service.GetMonthlySummary(r.Context(), userID, month, year)
+	summary, err := h.svc.GetMonthlySummary(r.Context(), userID, month, year)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
@@ -283,63 +295,76 @@ func (h *TransactionHandler) GetMonthlySummary(w http.ResponseWriter, r *http.Re
 		TotalExpense: int64(summary.TotalExpense),
 	}
 
-	WriteJson(w, http.StatusOK, "Success get monthly summary", res)
+	WriteJSON(w, http.StatusOK, "Monthly summary retrieved successfully", res)
 }
 
-// GetHighestExpense mengambil data pengeluaran tertinggi (GET)
 func (h *TransactionHandler) GetHighestExpense(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	userID, _ := strconv.ParseUint(q.Get("user_id"), 10, 64)
-	month, _ := strconv.Atoi(q.Get("month"))
-	year, _ := strconv.Atoi(q.Get("year"))
-	limit, _ := strconv.Atoi(q.Get("limit"))
+	userIDStr := q.Get("user_id")
+	if userIDStr == "" {
+		userIDStr = q.Get("userId")
+	}
+	monthStr := q.Get("month")
+	yearStr := q.Get("year")
 
-	if userID == 0 || month == 0 || year == 0 {
-		WriteJson(w, http.StatusBadRequest, "user_id, month, and year are required", nil)
+	userID, err1 := strconv.ParseUint(userIDStr, 10, 64)
+	month, err2 := strconv.Atoi(monthStr)
+	year, err3 := strconv.Atoi(yearStr)
+
+	if err1 != nil || err2 != nil || err3 != nil || userID == 0 || month == 0 || year == 0 {
+		WriteJSON(w, http.StatusBadRequest, "user_id, month, and year are required", nil)
 		return
 	}
 
+	limit, _ := strconv.Atoi(q.Get("limit"))
 	if limit == 0 {
-		limit = 1 // Default limit jika tidak dikirimkan
+		limit = 1
 	}
 
-	hiExpense, err := h.service.GetHighestExpense(r.Context(), userID, month, year, limit)
+	hiExpense, err := h.svc.GetHighestExpense(r.Context(), userID, month, year, limit)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
 	if hiExpense == nil {
-		WriteJson(w, http.StatusOK, "No expense found", nil)
+		WriteJSON(w, http.StatusOK, "No expense found", nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "Success get highest expense", toTransactionResponse(hiExpense))
+	WriteJSON(w, http.StatusOK, "Highest expense retrieved successfully", toTransactionResponse(hiExpense))
 }
 
-// GetMostSpend mengambil daftar kategori dengan pengeluaran terbesar (GET)
 func (h *TransactionHandler) GetMostSpend(w http.ResponseWriter, r *http.Request) {
-	userID, _ := strconv.ParseUint(r.URL.Query().Get("user_id"), 10, 64)
-	month, _ := strconv.Atoi(r.URL.Query().Get("month"))
-	year, _ := strconv.Atoi(r.URL.Query().Get("year"))
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	q := r.URL.Query()
+	userIDStr := q.Get("user_id")
+	if userIDStr == "" {
+		userIDStr = q.Get("userId")
+	}
+	monthStr := q.Get("month")
+	yearStr := q.Get("year")
 
+	userID, err1 := strconv.ParseUint(userIDStr, 10, 64)
+	month, err2 := strconv.Atoi(monthStr)
+	year, err3 := strconv.Atoi(yearStr)
+
+	if err1 != nil || err2 != nil || err3 != nil || userID == 0 || month == 0 || year == 0 {
+		WriteJSON(w, http.StatusBadRequest, "user_id, month, and year are required", nil)
+		return
+	}
+
+	limit, _ := strconv.Atoi(q.Get("limit"))
 	if limit == 0 {
-		limit = 5 // default limit
+		limit = 5
 	}
 
-	if userID == 0 || month == 0 || year == 0 {
-		WriteJson(w, http.StatusBadRequest, "user_id, month, and year are required", nil)
-		return
-	}
-
-	spends, err := h.service.GetMostSpend(r.Context(), userID, month, year, limit)
+	spends, err := h.svc.GetMostSpend(r.Context(), userID, month, year, limit)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	var responses []CategorySpendResponse
+	responses := make([]CategorySpendResponse, 0, len(spends))
 	for _, spend := range spends {
 		responses = append(responses, CategorySpendResponse{
 			Category: spend.Category,
@@ -347,26 +372,19 @@ func (h *TransactionHandler) GetMostSpend(w http.ResponseWriter, r *http.Request
 		})
 	}
 
-	if responses == nil {
-		responses = []CategorySpendResponse{}
-	}
-
-	WriteJson(w, http.StatusOK, "Success get most spend categories", responses)
+	WriteJSON(w, http.StatusOK, "Most spend categories retrieved successfully", responses)
 }
 
-// --- Helper Functions ---
-
-// toTransactionResponse memetakan Entity Transaction ke Struct Response API
 func toTransactionResponse(tx *transaction.Transaction) TransactionResponse {
+	if tx == nil {
+		return TransactionResponse{}
+	}
+
 	var goalID *uint64
 	if tx.GoalID() != nil {
 		val := uint64(*tx.GoalID())
 		goalID = &val
 	}
-
-	// Parsing ID dari string ke uint64 (berdasarkan method WalletID() di Entity lu)
-	walletIDStr := tx.WalletID()
-	walletID, _ := strconv.ParseUint(walletIDStr, 10, 64)
 
 	return TransactionResponse{
 		ID:              uint64(tx.ID()),
@@ -376,7 +394,8 @@ func toTransactionResponse(tx *transaction.Transaction) TransactionResponse {
 		CategoryID:      uint64(tx.CategoryID()),
 		Description:     tx.Description(),
 		TransactionType: string(tx.TransactionType()),
-		WalletID:        walletID,
+		WalletID:        uint64(tx.WalletID()),
 		TransactionDate: tx.TransactionDate(),
 	}
 }
+

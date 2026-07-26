@@ -9,14 +9,14 @@ type UserID uint64
 type MonthlyLimit uint64
 
 type User struct {
-	id           UserID       `json:"id"`
-	username     string       `json:"username"`
-	email        string       `json:"email"`
-	password     string       `json:"password"`
-	monthlyLimit MonthlyLimit `json:"monthly_limit"`
-	isActive     bool         `json:"is_active"`
-	createdAt    time.Time    `json:"created_at"`
-	updatedAt    time.Time    `json:"updated_at"`
+	id           UserID
+	username     string
+	email        string
+	password     string
+	monthlyLimit MonthlyLimit
+	isActive     bool
+	createdAt    time.Time
+	updatedAt    time.Time
 }
 
 func NewUser(
@@ -26,34 +26,36 @@ func NewUser(
 	monthlyLimit MonthlyLimit,
 	isActive bool,
 	createdAt time.Time,
-	updatedAt time.Time) (*User, error) {
+	updatedAt time.Time,
+) (*User, error) {
 
 	if username == "" {
-		return nil, errors.New("invalid users name")
+		return nil, errors.New("username is required")
 	}
 	if email == "" {
-		return nil, errors.New("invalid users email")
+		return nil, errors.New("email is required")
 	}
 	if password == "" {
-		return nil, errors.New("invalid users password")
+		return nil, errors.New("password is required")
 	}
-	if monthlyLimit <= 0 {
-		return nil, errors.New("invalid users limit")
+	if monthlyLimit == 0 {
+		return nil, errors.New("monthly limit must be greater than zero")
 	}
 	if createdAt.IsZero() {
-		return nil, errors.New("invalid users createdAt")
+		createdAt = time.Now()
 	}
 	if updatedAt.IsZero() {
-		return nil, errors.New("invalid users updatedAt")
+		updatedAt = time.Now()
 	}
+
 	return &User{
 		username:     username,
 		email:        email,
 		password:     password,
 		monthlyLimit: monthlyLimit,
-		isActive:     true,
-		createdAt:    time.Now(),
-		updatedAt:    time.Now(),
+		isActive:     isActive,
+		createdAt:    createdAt,
+		updatedAt:    updatedAt,
 	}, nil
 }
 
@@ -65,7 +67,8 @@ func ReconstituteUser(
 	monthlyLimit MonthlyLimit,
 	isActive bool,
 	createdAt time.Time,
-	updatedAt time.Time) *User {
+	updatedAt time.Time,
+) *User {
 	return &User{
 		id:           id,
 		username:     username,
@@ -84,20 +87,23 @@ func (u *User) UpdateUser(
 	password string,
 	monthlyLimit MonthlyLimit,
 	isActive bool,
-
 ) error {
 	if username == "" {
-		return errors.New("invalid users name")
+		return errors.New("username is required")
+	}
+	if email == "" {
+		return errors.New("email is required")
 	}
 	if password == "" {
-		return errors.New("invalid users password")
+		return errors.New("password is required")
 	}
 	if password == u.password {
-		return errors.New("User Password Cant Be The Same As Before")
+		return errors.New("new password cannot be the same as old password")
 	}
-	if monthlyLimit <= 0 {
-		return errors.New("invalid users limit")
+	if monthlyLimit == 0 {
+		return errors.New("monthly limit must be greater than zero")
 	}
+
 	u.username = username
 	u.email = email
 	u.password = password
@@ -116,3 +122,4 @@ func (u *User) MonthlyLimit() MonthlyLimit { return u.monthlyLimit }
 func (u *User) IsActive() bool             { return u.isActive }
 func (u *User) CreatedAt() time.Time       { return u.createdAt }
 func (u *User) UpdatedAt() time.Time       { return u.updatedAt }
+

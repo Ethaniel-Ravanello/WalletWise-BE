@@ -10,8 +10,6 @@ import (
 	"walletwise/internal/domain/wallet"
 )
 
-// --- DTO / Response Structs ---
-
 type WalletResponse struct {
 	ID         uint64    `json:"id"`
 	UserID     uint64    `json:"user_id"`
@@ -35,22 +33,24 @@ type UpdateWalletRequest struct {
 	Balance    uint64 `json:"balance"`
 }
 
-// --- Handler ---
-
 type WalletHandler struct {
-	service *service.Service
+	svc *service.Service
 }
 
-func NewWalletHandler(service *service.Service) *WalletHandler {
-	return &WalletHandler{service: service}
+func NewWalletHandler(svc *service.Service) *WalletHandler {
+	return &WalletHandler{svc: svc}
 }
 
-func (wh *WalletHandler) CreateWallets(w http.ResponseWriter, r *http.Request) {
+func (h *WalletHandler) CreateWallet(w http.ResponseWriter, r *http.Request) {
 	var req CreateWalletRequest
 
-	// PERBAIKAN: Gunakan Decoder, bukan Encoder
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid request payload", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid request payload", nil)
+		return
+	}
+
+	if req.UserID == 0 || req.WalletName == "" || req.WalletType == "" {
+		WriteJSON(w, http.StatusBadRequest, "user_id, wallet_name, and wallet_type are required", nil)
 		return
 	}
 
@@ -58,116 +58,88 @@ func (wh *WalletHandler) CreateWallets(w http.ResponseWriter, r *http.Request) {
 		UserID:     req.UserID,
 		WalletName: req.WalletName,
 		WalletType: req.WalletType,
-		// Balance di-set 0 di service sesuai logika Anda
 	}
 
-	err := wh.service.CreateWallet(r.Context(), input)
+	err := h.svc.CreateWallet(r.Context(), input)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	WriteJson(w, http.StatusCreated, "Created Wallet Successfully", nil)
+	WriteJSON(w, http.StatusCreated, "Wallet created successfully", nil)
 }
 
-func (wh *WalletHandler) SearchAllWallets(w http.ResponseWriter, r *http.Request) {
-	userIdStr := r.URL.Query().Get("userId")
-	if userIdStr == "" {
-		WriteJson(w, http.StatusBadRequest, "User Id is required", nil)
-		return
-	}
-
-	// PERBAIKAN: Gunakan ParseUint untuk tipe data uint64, bukan Atoi (int)
-	userId, err := strconv.ParseUint(userIdStr, 10, 64)
-	if err != nil {
-		WriteJson(w, http.StatusBadRequest, "Error Parsing UserID", nil)
-		return
-	}
-
-	wallets, err := wh.service.SearchAllWallet(r.Context(), userId)
-	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
-		return
-	}
-
-	// Mapping ke Response Struct agar JSON tidak kosong
-	var responses []WalletResponse
-	for _, w := range wallets {
-		responses = append(responses, toWalletResponse(w))
-	}
-	if responses == nil {
-		responses = []WalletResponse{}
-	}
-
-	WriteJson(w, http.StatusOK, "Success Getting All Wallets", responses)
+// CreateWallets is an alias for CreateWallet for backward compatibility.
+func (h *WalletHandler) CreateWallets(w http.ResponseWriter, r *http.Request) {
+	h.CreateWallet(w, r)
 }
 
-func (wh *WalletHandler) SearchWalletsByID(w http.ResponseWriter, r *http.Request) {
+func (h *WalletHandler) SearchAllWallets(w http.ResponseWriter, r *http.Request) {
+	userIDStr := r.URL.Query().Get("user_id")
+	if userIDStr == "" {
+		userIDStr = r.URL.Query().Get("userId")
+	}
+	if userIDStr == "" {
+		WriteJSON(w, http.StatusBadRequest, "user_id is required", nil)
+		return
+	}
+
+	userID, err := strconv.ParseUint(userIDStr, 10, 64)
+	if err != nil {
+		WriteJSON(w, http.StatusBadRequest, "Invalid user_id format", nil)
+		return
+	}
+
+	wallets, err := h.svc.SearchAllWallet(r.Context(), userID)
+	if err != nil {
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
+		return
+	}
+
+	responses := make([]WalletResponse, 0, len(wallets))
+	for _, wlt := range wallets {
+		responses = append(responses, toWalletResponse(wlt))
+	}
+
+	WriteJSON(w, http.StatusOK, "Wallets retrieved successfully", responses)
+}
+
+func (h *WalletHandler) SearchWalletsByID(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	if idStr == "" {
-		WriteJson(w, http.StatusBadRequest, "ID is required", nil)
+		WriteJSON(w, http.StatusBadRequest, "Wallet ID is required", nil)
 		return
 	}
 
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		WriteJson(w, http.StatusBadRequest, "Error Parsing ID", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid wallet ID format", nil)
 		return
 	}
 
-	wData, err := wh.service.SearchWalletByID(r.Context(), id)
+	walletData, err := h.svc.SearchWalletByID(r.Context(), id)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusNotFound, "Wallet not found", nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "Success Getting Wallet", toWalletResponse(wData))
+	WriteJSON(w, http.StatusOK, "Wallet retrieved successfully", toWalletResponse(walletData))
 }
 
-func (wh *WalletHandler) UpdateWallet(w http.ResponseWriter, r *http.Request) {
+func (h *WalletHandler) UpdateWallet(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid ID format", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid wallet ID format", nil)
 		return
 	}
 
 	var req UpdateWalletRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid request payload", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid request payload", nil)
 		return
 	}
 
-	input := service.WalletUpdateInput{
-		ID:         id,
-		UserID:     req.UserID,
-		WalletName: req.WalletName,
-		WalletType: req.WalletType,
-	}
-
-	err = wh.service.UpdateWallet(r.Context(), input)
-	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
-		return
-	}
-
-	WriteJson(w, http.StatusOK, "Updated Wallet Successfully", nil)
-}
-
-func (wh *WalletHandler) DeleteWallet(w http.ResponseWriter, r *http.Request) {
-	// Standar REST API: Ambil ID Wallet yang mau dihapus dari URL, bukan dari Body
-	idStr := r.PathValue("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid ID format", nil)
-		return
-	}
-
-	var req UpdateWalletRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteJson(w, http.StatusBadRequest, "Invalid request payload", nil)
-		return
-	}
 	input := service.WalletUpdateInput{
 		ID:         id,
 		UserID:     req.UserID,
@@ -176,89 +148,133 @@ func (wh *WalletHandler) DeleteWallet(w http.ResponseWriter, r *http.Request) {
 		Balance:    req.Balance,
 	}
 
-	err = wh.service.DeleteWallet(r.Context(), service.WalletInput(input))
+	err = h.svc.UpdateWallet(r.Context(), input)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "Deleted Wallet Successfully", nil)
+	WriteJSON(w, http.StatusOK, "Wallet updated successfully", nil)
 }
 
-func (wh *WalletHandler) SearchHighestBalance(w http.ResponseWriter, r *http.Request) {
-	userIdStr := r.PathValue("userId")
-	if userIdStr == "" {
-		WriteJson(w, http.StatusBadRequest, "User Id is required", nil)
-		return
-	}
-
-	userId, err := strconv.ParseUint(userIdStr, 10, 64)
+func (h *WalletHandler) DeleteWallet(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		WriteJson(w, http.StatusBadRequest, "Error Parsing UserID", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid wallet ID format", nil)
 		return
 	}
 
-	wData, err := wh.service.SearchHighestBalanceWallet(r.Context(), wallet.UserID(userId))
+	var req UpdateWalletRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	userID := req.UserID
+	if userID == 0 {
+		userIDStr := r.URL.Query().Get("user_id")
+		if userIDStr == "" {
+			userIDStr = r.URL.Query().Get("userId")
+		}
+		if userIDStr != "" {
+			userID, _ = strconv.ParseUint(userIDStr, 10, 64)
+		}
+	}
+
+	input := service.WalletInput{
+		ID:         id,
+		UserID:     userID,
+		WalletName: req.WalletName,
+		WalletType: req.WalletType,
+		Balance:    req.Balance,
+	}
+
+	err = h.svc.DeleteWallet(r.Context(), input)
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "Success Getting Highest Balance Wallet", toWalletResponse(wData))
+	WriteJSON(w, http.StatusOK, "Wallet deleted successfully", nil)
 }
 
-func (wh *WalletHandler) SearchMostActive(w http.ResponseWriter, r *http.Request) {
-	userIdStr := r.PathValue("userId")
-	if userIdStr == "" {
-		WriteJson(w, http.StatusBadRequest, "User Id is required", nil)
+func (h *WalletHandler) SearchHighestBalance(w http.ResponseWriter, r *http.Request) {
+	userIDStr := r.PathValue("userId")
+	if userIDStr == "" {
+		userIDStr = r.URL.Query().Get("user_id")
+	}
+	if userIDStr == "" {
+		WriteJSON(w, http.StatusBadRequest, "User ID is required", nil)
 		return
 	}
 
-	userId, err := strconv.ParseUint(userIdStr, 10, 64)
+	userID, err := strconv.ParseUint(userIDStr, 10, 64)
 	if err != nil {
-		WriteJson(w, http.StatusBadRequest, "Error Parsing UserID", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid user ID format", nil)
 		return
 	}
 
-	wData, err := wh.service.SearchMostActiveWallet(r.Context(), wallet.UserID(userId))
+	walletData, err := h.svc.SearchHighestBalanceWallet(r.Context(), wallet.UserID(userID))
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusNotFound, "Highest balance wallet not found", nil)
 		return
 	}
 
-	WriteJson(w, http.StatusOK, "Success Getting Most Active Wallet", toWalletResponse(wData))
+	WriteJSON(w, http.StatusOK, "Highest balance wallet retrieved successfully", toWalletResponse(walletData))
 }
 
-func (wh *WalletHandler) SearchTotalBalance(w http.ResponseWriter, r *http.Request) {
-	userIdStr := r.PathValue("userId")
-	if userIdStr == "" {
-		WriteJson(w, http.StatusBadRequest, "User Id is required", nil)
+func (h *WalletHandler) SearchMostActive(w http.ResponseWriter, r *http.Request) {
+	userIDStr := r.PathValue("userId")
+	if userIDStr == "" {
+		userIDStr = r.URL.Query().Get("user_id")
+	}
+	if userIDStr == "" {
+		WriteJSON(w, http.StatusBadRequest, "User ID is required", nil)
 		return
 	}
 
-	userId, err := strconv.ParseUint(userIdStr, 10, 64)
+	userID, err := strconv.ParseUint(userIDStr, 10, 64)
 	if err != nil {
-		WriteJson(w, http.StatusBadRequest, "Error Parsing UserID", nil)
+		WriteJSON(w, http.StatusBadRequest, "Invalid user ID format", nil)
 		return
 	}
 
-	totalBalance, err := wh.service.SearchTotalBalanceWallet(r.Context(), wallet.UserID(userId))
+	walletData, err := h.svc.SearchMostActiveWallet(r.Context(), wallet.UserID(userID))
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusNotFound, "Most active wallet not found", nil)
 		return
 	}
 
-	// Return map sederhana untuk total balance
+	WriteJSON(w, http.StatusOK, "Most active wallet retrieved successfully", toWalletResponse(walletData))
+}
+
+func (h *WalletHandler) SearchTotalBalance(w http.ResponseWriter, r *http.Request) {
+	userIDStr := r.PathValue("userId")
+	if userIDStr == "" {
+		userIDStr = r.URL.Query().Get("user_id")
+	}
+	if userIDStr == "" {
+		WriteJSON(w, http.StatusBadRequest, "User ID is required", nil)
+		return
+	}
+
+	userID, err := strconv.ParseUint(userIDStr, 10, 64)
+	if err != nil {
+		WriteJSON(w, http.StatusBadRequest, "Invalid user ID format", nil)
+		return
+	}
+
+	totalBalance, err := h.svc.SearchTotalBalanceWallet(r.Context(), wallet.UserID(userID))
+	if err != nil {
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
+		return
+	}
+
 	response := map[string]uint64{
 		"total_balance": totalBalance,
 	}
 
-	WriteJson(w, http.StatusOK, "Success Getting Total Balance", response)
+	WriteJSON(w, http.StatusOK, "Total balance calculated successfully", response)
 }
 
-// --- Helper Functions ---
-
-// toWalletResponse memetakan Entity Wallet ke Struct Response API agar JSON terbaca
 func toWalletResponse(w *wallet.Wallet) WalletResponse {
 	if w == nil {
 		return WalletResponse{}

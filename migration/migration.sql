@@ -1,5 +1,3 @@
--- Improved WalletWise Migration
-
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(100) UNIQUE NOT NULL,
@@ -68,7 +66,8 @@ CREATE TABLE IF NOT EXISTS budgets (
 CREATE TABLE IF NOT EXISTS transactions (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
-    wallet_id INTEGER NOT NULL, -- Menggantikan transaction_source
+    wallet_id INTEGER NOT NULL,
+
     goal_id INTEGER,
     category_id INTEGER NOT NULL,
     amount BIGINT NOT NULL CHECK (amount > 0),
@@ -84,14 +83,12 @@ CREATE TABLE IF NOT EXISTS transactions (
     CONSTRAINT fk_trx_category FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT
     );
 
--- Indexes for queries you'll run often
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transaction_date);
 CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(transaction_type);
 CREATE INDEX IF NOT EXISTS idx_saving_goals_user_id ON saving_goals(user_id);
 
--- Seed default categories
 INSERT INTO categories (name, type) VALUES
 ('Salary', 'income'),
 ('Freelance', 'income'),

@@ -3,7 +3,9 @@ package transport
 import (
 	"net/http"
 	"time"
+
 	service "walletwise/internal/application/categories"
+	"walletwise/internal/domain/categories"
 )
 
 type CategoryResponse struct {
@@ -15,31 +17,39 @@ type CategoryResponse struct {
 }
 
 type CategoriesHandler struct {
-	service *service.Service
+	svc *service.Service
 }
 
-func NewCategoriesHandler(s *service.Service) *CategoriesHandler {
-	return &CategoriesHandler{service: s}
+func NewCategoriesHandler(svc *service.Service) *CategoriesHandler {
+	return &CategoriesHandler{svc: svc}
 }
 
-func (c *CategoriesHandler) GetAllCategories(w http.ResponseWriter, r *http.Request) {
-	categories, err := c.service.GetAllCategories(r.Context())
+func (h *CategoriesHandler) GetAllCategories(w http.ResponseWriter, r *http.Request) {
+	categoriesList, err := h.svc.GetAllCategories(r.Context())
 	if err != nil {
-		WriteJson(w, http.StatusInternalServerError, err.Error(), nil)
+		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
-	var responses []CategoryResponse
-	for _, cat := range categories {
-		responses = append(responses, CategoryResponse{
-			ID:   uint64(cat.ID()),
-			Name: cat.Name(),
-		})
+	responses := make([]CategoryResponse, 0, len(categoriesList))
+	for _, cat := range categoriesList {
+		responses = append(responses, toCategoryResponse(cat))
 	}
 
-	if responses == nil {
-		responses = []CategoryResponse{}
-	}
-
-	WriteJson(w, http.StatusOK, "Success Get Category List", responses)
+	WriteJSON(w, http.StatusOK, "Categories retrieved successfully", responses)
 }
+
+func toCategoryResponse(cat *categories.Categories) CategoryResponse {
+	if cat == nil {
+		return CategoryResponse{}
+	}
+	return CategoryResponse{
+		ID:        uint64(cat.ID()),
+		Name:      cat.Name(),
+		Type:      cat.CategoriesType(),
+		Icon:      cat.Icon(),
+		CreatedAt: cat.CreatedAt(),
+	}
+}
+
+
