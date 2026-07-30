@@ -319,18 +319,18 @@ func (h *TransactionHandler) GetMonthlySummary(w http.ResponseWriter, r *http.Re
 
 func (h *TransactionHandler) GetHighestExpense(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	userIDStr := q.Get("user_id")
-	if userIDStr == "" {
-		userIDStr = q.Get("userId")
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
 	}
 	monthStr := q.Get("month")
 	yearStr := q.Get("year")
 
-	userID, err1 := strconv.ParseUint(userIDStr, 10, 64)
 	month, err2 := strconv.Atoi(monthStr)
 	year, err3 := strconv.Atoi(yearStr)
 
-	if err1 != nil || err2 != nil || err3 != nil || userID == 0 || month == 0 || year == 0 {
+	if err2 != nil || err3 != nil || userId == 0 || month == 0 || year == 0 {
 		WriteJSON(w, http.StatusBadRequest, "user_id, month, and year are required", nil)
 		return
 	}
@@ -340,7 +340,7 @@ func (h *TransactionHandler) GetHighestExpense(w http.ResponseWriter, r *http.Re
 		limit = 1
 	}
 
-	hiExpense, err := h.svc.GetHighestExpense(r.Context(), userID, month, year, limit)
+	hiExpense, err := h.svc.GetHighestExpense(r.Context(), userId, month, year, limit)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
@@ -356,18 +356,18 @@ func (h *TransactionHandler) GetHighestExpense(w http.ResponseWriter, r *http.Re
 
 func (h *TransactionHandler) GetMostSpend(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	userIDStr := q.Get("user_id")
-	if userIDStr == "" {
-		userIDStr = q.Get("userId")
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
 	}
 	monthStr := q.Get("month")
 	yearStr := q.Get("year")
 
-	userID, err1 := strconv.ParseUint(userIDStr, 10, 64)
 	month, err2 := strconv.Atoi(monthStr)
 	year, err3 := strconv.Atoi(yearStr)
 
-	if err1 != nil || err2 != nil || err3 != nil || userID == 0 || month == 0 || year == 0 {
+	if err2 != nil || err3 != nil || userId == 0 || month == 0 || year == 0 {
 		WriteJSON(w, http.StatusBadRequest, "user_id, month, and year are required", nil)
 		return
 	}
@@ -377,7 +377,7 @@ func (h *TransactionHandler) GetMostSpend(w http.ResponseWriter, r *http.Request
 		limit = 5
 	}
 
-	spends, err := h.svc.GetMostSpend(r.Context(), userID, month, year, limit)
+	spends, err := h.svc.GetMostSpend(r.Context(), userId, month, year, limit)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return

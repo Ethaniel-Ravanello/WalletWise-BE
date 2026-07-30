@@ -82,7 +82,7 @@ func (s *Service) CreateWallet(ctx context.Context, input WalletInput) error {
 	return nil
 }
 
-func (s *Service) GetAllWallets(ctx context.Context, userID uint64) ([]*wallet.Wallet, error) {
+func (s *Service) SearchAllWallet(ctx context.Context, userID uint64) ([]*wallet.Wallet, error) {
 	allWallets, err := s.repo.SearchAll(ctx, wallet.UserID(userID))
 	if err != nil {
 		return nil, fmt.Errorf("search wallets: %w", err)
@@ -93,7 +93,7 @@ func (s *Service) GetAllWallets(ctx context.Context, userID uint64) ([]*wallet.W
 	return allWallets, nil
 }
 
-func (s *Service) GetWalletByID(ctx context.Context, walletID uint64, userId uint64) (*wallet.Wallet, error) {
+func (s *Service) SearchWalletByID(ctx context.Context, walletID uint64, userId uint64) (*wallet.Wallet, error) {
 	w, err := s.repo.SearchByID(ctx, wallet.WalletID(walletID), wallet.UserID(userId))
 	if err != nil {
 		return nil, fmt.Errorf("search wallet by id: %w", err)
@@ -169,7 +169,7 @@ func (s *Service) DeleteWallet(ctx context.Context, input WalletInput, userId ui
 	return nil
 }
 
-func (s *Service) GetHighestBalanceWallet(ctx context.Context, userID wallet.UserID) (*wallet.Wallet, error) {
+func (s *Service) SearchHighestBalanceWallet(ctx context.Context, userID wallet.UserID) (*wallet.Wallet, error) {
 	if userID <= 0 {
 		return nil, ErrInvalidUserID
 	}
@@ -180,7 +180,7 @@ func (s *Service) GetHighestBalanceWallet(ctx context.Context, userID wallet.Use
 	return highWallet, nil
 }
 
-func (s *Service) GetMostActiveWallet(ctx context.Context, userID wallet.UserID) (*wallet.Wallet, error) {
+func (s *Service) SearchMostActiveWallet(ctx context.Context, userID wallet.UserID) (*wallet.Wallet, error) {
 	if userID <= 0 {
 		return nil, ErrInvalidUserID
 	}
@@ -191,7 +191,7 @@ func (s *Service) GetMostActiveWallet(ctx context.Context, userID wallet.UserID)
 	return activeWallet, nil
 }
 
-func (s *Service) GetTotalBalance(ctx context.Context, userID wallet.UserID) (uint64, error) {
+func (s *Service) SearchTotalBalanceWallet(ctx context.Context, userID wallet.UserID) (uint64, error) {
 	if userID <= 0 {
 		return 0, ErrInvalidUserID
 	}

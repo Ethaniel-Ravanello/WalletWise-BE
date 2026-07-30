@@ -17,11 +17,13 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
 		}
 
 		splitBearer := strings.Split(authHeader, " ")
 		if len(splitBearer) != 2 {
 			http.Error(w, "Invalid Or Unauthorize Token", http.StatusUnauthorized)
+			return
 		}
 
 		tokenString := splitBearer[1]
@@ -29,6 +31,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		claims, err := jwt.ValidateToken(tokenString)
 		if err != nil {
 			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
 		}
 
 		ctxId := context.WithValue(r.Context(), UserIdKey, claims.UserId)

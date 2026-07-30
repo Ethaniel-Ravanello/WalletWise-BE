@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+	"walletwise/internal/middleware"
 
 	service "walletwise/internal/application/wallet"
 	"walletwise/internal/domain/wallet"
@@ -105,6 +106,12 @@ func (h *WalletHandler) SearchAllWallets(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *WalletHandler) SearchWalletsByID(w http.ResponseWriter, r *http.Request) {
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+	}
+
 	idStr := r.PathValue("id")
 	if idStr == "" {
 		WriteJSON(w, http.StatusBadRequest, "Wallet ID is required", nil)
@@ -117,7 +124,7 @@ func (h *WalletHandler) SearchWalletsByID(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	walletData, err := h.svc.SearchWalletByID(r.Context(), id)
+	walletData, err := h.svc.SearchWalletByID(r.Context(), id, userId)
 	if err != nil {
 		WriteJSON(w, http.StatusNotFound, "Wallet not found", nil)
 		return
@@ -127,6 +134,12 @@ func (h *WalletHandler) SearchWalletsByID(w http.ResponseWriter, r *http.Request
 }
 
 func (h *WalletHandler) UpdateWallet(w http.ResponseWriter, r *http.Request) {
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+	}
+
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
@@ -148,7 +161,7 @@ func (h *WalletHandler) UpdateWallet(w http.ResponseWriter, r *http.Request) {
 		Balance:    req.Balance,
 	}
 
-	err = h.svc.UpdateWallet(r.Context(), input)
+	err = h.svc.UpdateWallet(r.Context(), input, userId)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
@@ -158,6 +171,12 @@ func (h *WalletHandler) UpdateWallet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WalletHandler) DeleteWallet(w http.ResponseWriter, r *http.Request) {
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+	}
+
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
@@ -187,7 +206,7 @@ func (h *WalletHandler) DeleteWallet(w http.ResponseWriter, r *http.Request) {
 		Balance:    req.Balance,
 	}
 
-	err = h.svc.DeleteWallet(r.Context(), input)
+	err = h.svc.DeleteWallet(r.Context(), input, userId)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return

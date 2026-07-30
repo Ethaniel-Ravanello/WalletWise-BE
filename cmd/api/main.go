@@ -53,8 +53,9 @@ func main() {
 	budgetHandler := transport.NewBudgetHandler(budgetService)
 
 	mux := http.NewServeMux()
-	
+
 	mux.HandleFunc("POST /register", userHandler.CreateUser)
+	mux.HandleFunc("POST /login", userHandler.Login)
 
 	mux.Handle("POST /transactions", middleware.AuthMiddleware(http.HandlerFunc(trxHandler.CreateTransaction)))
 	mux.Handle("GET /transactions", middleware.AuthMiddleware(http.HandlerFunc(trxHandler.GetTransactions)))

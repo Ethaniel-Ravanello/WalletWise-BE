@@ -2,9 +2,11 @@ package transport
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
+	"walletwise/internal/middleware"
 
 	service "walletwise/internal/application/user"
 	"walletwise/internal/domain/users"
@@ -34,6 +36,15 @@ type UpdateUserRequest struct {
 	Password     string `json:"password"`
 	MonthlyLimit uint64 `json:"monthly_limit"`
 	IsActive     bool   `json:"is_active"`
+}
+
+type UserLoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type UserLoginResponse struct {
+	Token string `json:"token"`
 }
 
 type UserHandler struct {
@@ -73,6 +84,27 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, "User created successfully", toUserResponse(user))
 }
 
+func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
+	var input UserLoginRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		WriteJSON(w, http.StatusBadRequest, "Invalid request payload", nil)
+		return
+	}
+
+	if input.Email == "" || input.Password == "" {
+		WriteJSON(w, http.StatusBadRequest, "email, and password are required", nil)
+	}
+
+	jwtToken, err := h.svc.Login(r.Context(), input.Email, input.Password)
+	if err != nil {
+		WriteJSON(w, http.StatusUnauthorized, err.Error(), nil)
+		return
+	}
+	fmt.Println(jwtToken)
+	WriteJSON(w, http.StatusOK, "Login Successful", LoginResponse(jwtToken))
+}
+
 func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	if idStr == "" {
@@ -86,7 +118,7 @@ func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.svc.SearchUserById(r.Context(), users.UserID(userID))
+	user, err := h.svc.SearchUserById(r.Context(), userID)
 	if err != nil {
 		WriteJSON(w, http.StatusNotFound, "User not found", nil)
 		return
@@ -112,11 +144,10 @@ func (h *UserHandler) GetUserByEmail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
-	userID, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		WriteJSON(w, http.StatusBadRequest, "Invalid user ID format", nil)
-		return
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
 	}
 
 	var req UpdateUserRequest
@@ -126,7 +157,7 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	input := &service.UserUpdateInput{
-		ID:           userID,
+		ID:           userId,
 		Username:     req.Username,
 		Email:        req.Email,
 		Password:     req.Password,
@@ -134,7 +165,7 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		IsActive:     req.IsActive,
 	}
 
-	if err := h.svc.UpdateUser(r.Context(), input); err != nil {
+	if err := h.svc.UpdateUser(r.Context(), input, userId); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
@@ -143,6 +174,12 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+	}
+
 	idStr := r.PathValue("id")
 	userID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
@@ -154,7 +191,7 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		ID: userID,
 	}
 
-	if err := h.svc.DeleteUser(r.Context(), input); err != nil {
+	if err := h.svc.DeleteUser(r.Context(), input, userId); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
@@ -167,7 +204,6 @@ func toUserResponse(user *users.User) UserResponse {
 		return UserResponse{}
 	}
 	return UserResponse{
-		ID:           uint64(user.UserID()),
 		Username:     user.Username(),
 		Email:        user.Email(),
 		MonthlyLimit: uint64(user.MonthlyLimit()),
@@ -177,4 +213,11 @@ func toUserResponse(user *users.User) UserResponse {
 	}
 }
 
-
+func LoginResponse(token string) UserLoginResponse {
+	if token == "" {
+		return UserLoginResponse{}
+	}
+	return UserLoginResponse{
+		Token: token,
+	}
+}
