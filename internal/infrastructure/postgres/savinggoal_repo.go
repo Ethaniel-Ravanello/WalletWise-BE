@@ -104,10 +104,10 @@ func (r *SavingGoalsRepo) SearchAll(ctx context.Context, userID saving_goals.Use
 	return savingGoals, nil
 }
 
-func (r *SavingGoalsRepo) Update(ctx context.Context, sg *saving_goals.SavingGoals) error {
+func (r *SavingGoalsRepo) Update(ctx context.Context, sg *saving_goals.SavingGoals, userId saving_goals.UserID) error {
 	query := `UPDATE saving_goals 
 	          SET user_id = $1, name = $2, target_amount = $3, current_amount = $4, deadline = $5, status = $6, description = $7, created_at = $8, updated_at = $9 
-	          WHERE id = $10`
+	          WHERE id = $10 AND user_id = $11`
 
 	_, err := r.db.ExecContext(ctx, query,
 		sg.UserID(),
@@ -120,6 +120,7 @@ func (r *SavingGoalsRepo) Update(ctx context.Context, sg *saving_goals.SavingGoa
 		sg.CreatedAt(),
 		time.Now(),
 		sg.ID(),
+		userId,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update saving goal: %w", err)
@@ -127,10 +128,10 @@ func (r *SavingGoalsRepo) Update(ctx context.Context, sg *saving_goals.SavingGoa
 	return nil
 }
 
-func (r *SavingGoalsRepo) Delete(ctx context.Context, id saving_goals.SavingGoalsID) error {
-	query := `DELETE FROM saving_goals WHERE id = $1`
+func (r *SavingGoalsRepo) Delete(ctx context.Context, id saving_goals.SavingGoalsID, userId saving_goals.UserID) error {
+	query := `DELETE FROM saving_goals WHERE id = $1 AND user_id = $2`
 
-	_, err := r.db.ExecContext(ctx, query, id)
+	_, err := r.db.ExecContext(ctx, query, id, userId)
 	if err != nil {
 		return fmt.Errorf("failed to delete saving goal: %w", err)
 	}
@@ -252,14 +253,14 @@ func (r *SavingGoalsRepo) SearchByStatus(ctx context.Context, userID saving_goal
 	return savingGoals, nil
 }
 
-func (r *SavingGoalsRepo) UpdateAmount(ctx context.Context, tx *sql.Tx, id saving_goals.SavingGoalsID, amount int64) error {
+func (r *SavingGoalsRepo) UpdateAmount(ctx context.Context, tx *sql.Tx, id saving_goals.SavingGoalsID, amount int64, userId saving_goals.UserID) error {
 	query := `
         UPDATE saving_goals 
         SET current_amount = current_amount + $1, updated_at = NOW() 
-        WHERE id = $2
+        WHERE id = $2 AND user_id = $3
     `
 
-	_, err := tx.ExecContext(ctx, query, amount, id)
+	_, err := tx.ExecContext(ctx, query, amount, id, userId)
 	if err != nil {
 		return fmt.Errorf("failed to update saving goal amount: %w", err)
 	}

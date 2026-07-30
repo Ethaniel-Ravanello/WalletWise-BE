@@ -64,11 +64,11 @@ func (r *BudgetRepo) Save(ctx context.Context, b *budget.Budget) (budget.BudgetI
 	return budget.BudgetID(budgetID), nil
 }
 
-func (r *BudgetRepo) FindByID(ctx context.Context, id budget.BudgetID) (*budget.Budget, error) {
+func (r *BudgetRepo) FindByID(ctx context.Context, id budget.BudgetID, userId budget.UserID) (*budget.Budget, error) {
 	query := `
 		SELECT id, user_id, category_id, month, year, amount, created_at, updated_at
 		FROM budgets
-		WHERE id = $1
+		WHERE id = $1 AND user_id = $2
 	`
 
 	var (
@@ -82,7 +82,7 @@ func (r *BudgetRepo) FindByID(ctx context.Context, id budget.BudgetID) (*budget.
 		dbUpdatedAt  time.Time
 	)
 
-	row := r.db.QueryRowContext(ctx, query, id)
+	row := r.db.QueryRowContext(ctx, query, id, userId)
 	err := row.Scan(&dbID, &dbUserID, &dbCategoryID, &dbMonth, &dbYear, &dbAmount, &dbCreatedAt, &dbUpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -196,7 +196,7 @@ func (r *BudgetRepo) Update(ctx context.Context, b *budget.Budget) error {
 	query := `
 		UPDATE budgets
 		SET category_id = $1, month = $2, year = $3, amount = $4, updated_at = $5
-		WHERE id = $6
+		WHERE id = $6 AND user_id = $7
 	`
 
 	result, err := r.db.ExecContext(
@@ -207,6 +207,7 @@ func (r *BudgetRepo) Update(ctx context.Context, b *budget.Budget) error {
 		b.Amount(),
 		b.UpdatedAt(),
 		b.ID(),
+		b.UserID(),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update budget: %w", err)
@@ -223,13 +224,13 @@ func (r *BudgetRepo) Update(ctx context.Context, b *budget.Budget) error {
 	return nil
 }
 
-func (r *BudgetRepo) Delete(ctx context.Context, id budget.BudgetID) error {
+func (r *BudgetRepo) Delete(ctx context.Context, id budget.BudgetID, userId budget.UserID) error {
 	query := `
 		DELETE FROM budgets
-		WHERE id = $1
+		WHERE id = $1 AND user_id = $2
 	`
 
-	result, err := r.db.ExecContext(ctx, query, id)
+	result, err := r.db.ExecContext(ctx, query, id, userId)
 	if err != nil {
 		return fmt.Errorf("failed to delete budget: %w", err)
 	}

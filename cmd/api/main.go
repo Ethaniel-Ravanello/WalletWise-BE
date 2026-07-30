@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"walletwise/internal/middleware"
 
 	budgetService "walletwise/internal/application/budget"
 	categoriesService "walletwise/internal/application/categories"
@@ -52,44 +53,49 @@ func main() {
 	budgetHandler := transport.NewBudgetHandler(budgetService)
 
 	mux := http.NewServeMux()
+	
+	mux.HandleFunc("POST /register", userHandler.CreateUser)
 
-	mux.HandleFunc("POST /transactions", trxHandler.CreateTransaction)
-	mux.HandleFunc("GET /transactions", trxHandler.GetTransactions)
-	mux.HandleFunc("GET /transactions/{id}", trxHandler.GetTransactionById)
-	mux.HandleFunc("PUT /transactions/{id}", trxHandler.UpdateTransaction)
-	mux.HandleFunc("DELETE /transactions/{id}", trxHandler.DeleteTransaction)
+	mux.Handle("POST /transactions", middleware.AuthMiddleware(http.HandlerFunc(trxHandler.CreateTransaction)))
+	mux.Handle("GET /transactions", middleware.AuthMiddleware(http.HandlerFunc(trxHandler.GetTransactions)))
+	mux.Handle("GET /transactions/{id}", middleware.AuthMiddleware(http.HandlerFunc(trxHandler.GetTransactionById)))
+	mux.Handle("PUT /transactions/{id}", middleware.AuthMiddleware(http.HandlerFunc(trxHandler.UpdateTransaction)))
+	mux.Handle("DELETE /transactions/{id}", middleware.AuthMiddleware(http.HandlerFunc(trxHandler.DeleteTransaction)))
 
-	mux.HandleFunc("POST /users", userHandler.CreateUser)
-	mux.HandleFunc("GET /users/{id}", userHandler.GetUserByID)
-	mux.HandleFunc("GET /users/email/{email}", userHandler.GetUserByEmail)
-	mux.HandleFunc("PUT /users/{id}", userHandler.UpdateUser)
-	mux.HandleFunc("DELETE /users/{id}", userHandler.DeleteUser)
+	// --- Users ---
+	mux.Handle("GET /users/{id}", middleware.AuthMiddleware(http.HandlerFunc(userHandler.GetUserByID)))
+	mux.Handle("GET /users/email/{email}", middleware.AuthMiddleware(http.HandlerFunc(userHandler.GetUserByEmail)))
+	mux.Handle("PUT /users/{id}", middleware.AuthMiddleware(http.HandlerFunc(userHandler.UpdateUser)))
+	mux.Handle("DELETE /users/{id}", middleware.AuthMiddleware(http.HandlerFunc(userHandler.DeleteUser)))
 
-	mux.HandleFunc("GET /categories", categoriesHandler.GetAllCategories)
+	// --- Categories ---
+	mux.Handle("GET /categories", middleware.AuthMiddleware(http.HandlerFunc(categoriesHandler.GetAllCategories)))
 
-	mux.HandleFunc("POST /wallets", walletHandler.CreateWallets)
-	mux.HandleFunc("GET /wallets", walletHandler.SearchAllWallets)
-	mux.HandleFunc("GET /wallets/{id}", walletHandler.SearchWalletsByID)
-	mux.HandleFunc("PUT /wallets/{id}", walletHandler.UpdateWallet)
-	mux.HandleFunc("DELETE /wallets/{id}", walletHandler.DeleteWallet)
+	// --- Wallets ---
+	mux.Handle("POST /wallets", middleware.AuthMiddleware(http.HandlerFunc(walletHandler.CreateWallets)))
+	mux.Handle("GET /wallets", middleware.AuthMiddleware(http.HandlerFunc(walletHandler.SearchAllWallets)))
+	mux.Handle("GET /wallets/{id}", middleware.AuthMiddleware(http.HandlerFunc(walletHandler.SearchWalletsByID)))
+	mux.Handle("PUT /wallets/{id}", middleware.AuthMiddleware(http.HandlerFunc(walletHandler.UpdateWallet)))
+	mux.Handle("DELETE /wallets/{id}", middleware.AuthMiddleware(http.HandlerFunc(walletHandler.DeleteWallet)))
 
-	mux.HandleFunc("GET /wallets/users/{userId}/highest-balance", walletHandler.SearchHighestBalance)
-	mux.HandleFunc("GET /wallets/users/{userId}/most-active", walletHandler.SearchMostActive)
-	mux.HandleFunc("GET /wallets/users/{userId}/total-balance", walletHandler.SearchTotalBalance)
+	// --- Wallet Analytics ---
+	mux.Handle("GET /wallets/users/{userId}/highest-balance", middleware.AuthMiddleware(http.HandlerFunc(walletHandler.SearchHighestBalance)))
+	mux.Handle("GET /wallets/users/{userId}/most-active", middleware.AuthMiddleware(http.HandlerFunc(walletHandler.SearchMostActive)))
+	mux.Handle("GET /wallets/users/{userId}/total-balance", middleware.AuthMiddleware(http.HandlerFunc(walletHandler.SearchTotalBalance)))
 
-	mux.HandleFunc("POST /saving-goals", savingGoalsHandler.CreateGoal)
-	mux.HandleFunc("GET /saving-goals", savingGoalsHandler.GetAllGoals)
-	mux.HandleFunc("GET /saving-goals/{id}", savingGoalsHandler.GetGoalByID)
-	mux.HandleFunc("PUT /saving-goals/{id}", savingGoalsHandler.UpdateGoal)
-	mux.HandleFunc("DELETE /saving-goals/{id}", savingGoalsHandler.DeleteGoal)
+	// --- Saving Goals ---
+	mux.Handle("POST /saving-goals", middleware.AuthMiddleware(http.HandlerFunc(savingGoalsHandler.CreateGoal)))
+	mux.Handle("GET /saving-goals", middleware.AuthMiddleware(http.HandlerFunc(savingGoalsHandler.GetAllGoals)))
+	mux.Handle("GET /saving-goals/{id}", middleware.AuthMiddleware(http.HandlerFunc(savingGoalsHandler.GetGoalByID)))
+	mux.Handle("PUT /saving-goals/{id}", middleware.AuthMiddleware(http.HandlerFunc(savingGoalsHandler.UpdateGoal)))
+	mux.Handle("DELETE /saving-goals/{id}", middleware.AuthMiddleware(http.HandlerFunc(savingGoalsHandler.DeleteGoal)))
 
-	mux.HandleFunc("POST /budgets", budgetHandler.CreateBudget)
-
-	mux.HandleFunc("GET /budgets", budgetHandler.GetBudgetsByMonth)
-
-	mux.HandleFunc("GET /budgets/{id}", budgetHandler.GetBudgetByID)
-	mux.HandleFunc("PUT /budgets/{id}", budgetHandler.UpdateBudget)
-	mux.HandleFunc("DELETE /budgets/{id}", budgetHandler.DeleteBudget)
+	// --- Budgets ---
+	mux.Handle("POST /budgets", middleware.AuthMiddleware(http.HandlerFunc(budgetHandler.CreateBudget)))
+	mux.Handle("GET /budgets", middleware.AuthMiddleware(http.HandlerFunc(budgetHandler.GetBudgetsByMonth)))
+	mux.Handle("GET /budgets/{id}", middleware.AuthMiddleware(http.HandlerFunc(budgetHandler.GetBudgetByID)))
+	mux.Handle("PUT /budgets/{id}", middleware.AuthMiddleware(http.HandlerFunc(budgetHandler.UpdateBudget)))
+	mux.Handle("DELETE /budgets/{id}", middleware.AuthMiddleware(http.HandlerFunc(budgetHandler.DeleteBudget)))
 
 	port := ":8080"
 	log.Println("🚀 Server WalletWise menyala dan mendengarkan di port", port)

@@ -28,7 +28,7 @@ type MonthlySummary struct {
 }
 
 type Repository interface {
-	SearchByID(ctx context.Context, trxID TransactionID) (*Transaction, error)
+	SearchByID(ctx context.Context, trxID TransactionID, userId UserID) (*Transaction, error)
 	GetBalance(ctx context.Context, userID UserID, walletID WalletID) (Money, error)
 	GetMonthlySummary(ctx context.Context, userID UserID, month int, year int) (MonthlySummary, error)
 	GetHighestExpense(ctx context.Context, userID UserID, month int, year int, limit int) (*Transaction, error)
@@ -36,7 +36,6 @@ type Repository interface {
 
 	Save(ctx context.Context, tx *Transaction) error
 	Search(ctx context.Context, filter FilterTrx) ([]*Transaction, error)
-	Update(ctx context.Context, tx *Transaction) error
-	Delete(ctx context.Context, id TransactionID) error
+	Update(ctx context.Context, tx *Transaction, userId UserID) error
+	Delete(ctx context.Context, id TransactionID, userId UserID) error
 }
-

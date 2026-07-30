@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+	"walletwise/internal/middleware"
 
 	"walletwise/internal/application/saving_goal"
 	"walletwise/internal/domain/saving_goals"
@@ -82,22 +83,13 @@ func (h *SavingGoalsHandler) CreateGoal(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *SavingGoalsHandler) GetAllGoals(w http.ResponseWriter, r *http.Request) {
-	userIDStr := r.URL.Query().Get("user_id")
-	if userIDStr == "" {
-		userIDStr = r.URL.Query().Get("userId")
-	}
-	if userIDStr == "" {
-		WriteJSON(w, http.StatusBadRequest, "user_id query parameter is required", nil)
-		return
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
 	}
 
-	userID, err := strconv.ParseUint(userIDStr, 10, 64)
-	if err != nil {
-		WriteJSON(w, http.StatusBadRequest, "Invalid user_id format", nil)
-		return
-	}
-
-	goals, err := h.svc.GetAllGoals(r.Context(), saving_goals.UserID(userID))
+	goals, err := h.svc.GetAllGoals(r.Context(), saving_goals.UserID(userId))
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
@@ -112,6 +104,11 @@ func (h *SavingGoalsHandler) GetAllGoals(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *SavingGoalsHandler) GetGoalByID(w http.ResponseWriter, r *http.Request) {
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+	}
 	idStr := r.PathValue("id")
 	userIDStr := r.URL.Query().Get("user_id")
 	if userIDStr == "" {
@@ -125,6 +122,11 @@ func (h *SavingGoalsHandler) GetGoalByID(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if userID != userId {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user ID", nil)
+	}
+	userID = userID
+
 	sg, err := h.svc.GetGoalByID(r.Context(), saving_goals.SavingGoalsID(id), saving_goals.UserID(userID))
 	if err != nil {
 		WriteJSON(w, http.StatusNotFound, "Saving goal not found", nil)
@@ -135,15 +137,15 @@ func (h *SavingGoalsHandler) GetGoalByID(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *SavingGoalsHandler) UpdateGoal(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
-	userIDStr := r.URL.Query().Get("user_id")
-	if userIDStr == "" {
-		userIDStr = r.URL.Query().Get("userId")
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
 	}
 
+	idStr := r.PathValue("id")
 	id, err1 := strconv.ParseUint(idStr, 10, 64)
-	userID, err2 := strconv.ParseUint(userIDStr, 10, 64)
-	if err1 != nil || err2 != nil {
+	if err1 != nil {
 		WriteJSON(w, http.StatusBadRequest, "Invalid goal ID or user ID format", nil)
 		return
 	}
@@ -156,7 +158,7 @@ func (h *SavingGoalsHandler) UpdateGoal(w http.ResponseWriter, r *http.Request) 
 
 	input := &saving_goal.SgUpdate{
 		GoalID:        saving_goals.SavingGoalsID(id),
-		UserID:        saving_goals.UserID(userID),
+		UserID:        saving_goals.UserID(userId),
 		Name:          req.Name,
 		TargetAmount:  saving_goals.TargetAmount(req.TargetAmount),
 		CurrentAmount: saving_goals.CurrentAmount(req.CurrentAmount),
@@ -165,7 +167,7 @@ func (h *SavingGoalsHandler) UpdateGoal(w http.ResponseWriter, r *http.Request) 
 		Description:   req.Description,
 	}
 
-	sg, err := h.svc.UpdateGoal(r.Context(), input)
+	sg, err := h.svc.UpdateGoal(r.Context(), input, saving_goals.UserID(userId))
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
@@ -175,6 +177,12 @@ func (h *SavingGoalsHandler) UpdateGoal(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *SavingGoalsHandler) DeleteGoal(w http.ResponseWriter, r *http.Request) {
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+	}
+
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
@@ -182,7 +190,7 @@ func (h *SavingGoalsHandler) DeleteGoal(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	err = h.svc.DeleteGoal(r.Context(), saving_goals.SavingGoalsID(id))
+	err = h.svc.DeleteGoal(r.Context(), saving_goals.SavingGoalsID(id), saving_goals.UserID(userId))
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
@@ -208,5 +216,3 @@ func toGoalResponse(sg *saving_goals.SavingGoals) GoalResponse {
 		UpdatedAt:     sg.UpdatedAt(),
 	}
 }
-
-

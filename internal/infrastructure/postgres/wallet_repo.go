@@ -72,8 +72,8 @@ func (r *WalletRepo) SearchAll(ctx context.Context, userID wallet.UserID) ([]*wa
 	return wallets, nil
 }
 
-func (r *WalletRepo) SearchByID(ctx context.Context, walletID wallet.WalletID) (*wallet.Wallet, error) {
-	query := `SELECT id, user_id, name, wallet_type, balance, created_at, updated_at FROM wallets WHERE id = $1`
+func (r *WalletRepo) SearchByID(ctx context.Context, walletID wallet.WalletID, userId wallet.UserID) (*wallet.Wallet, error) {
+	query := `SELECT id, user_id, name, wallet_type, balance, created_at, updated_at FROM wallets WHERE id = $1 AND user_id = $2`
 
 	var (
 		id         uint64
@@ -85,7 +85,7 @@ func (r *WalletRepo) SearchByID(ctx context.Context, walletID wallet.WalletID) (
 		updatedAt  time.Time
 	)
 
-	row := r.db.QueryRowContext(ctx, query, walletID)
+	row := r.db.QueryRowContext(ctx, query, walletID, userId)
 	err := row.Scan(
 		&id,
 		&dbUserID,
@@ -131,8 +131,8 @@ func (r *WalletRepo) Save(ctx context.Context, wlt *wallet.Wallet) error {
 	return nil
 }
 
-func (r *WalletRepo) Update(ctx context.Context, wlt *wallet.Wallet) error {
-	query := `UPDATE wallets SET name = $1, wallet_type = $2, balance = $3, updated_at = $4 WHERE id = $5`
+func (r *WalletRepo) Update(ctx context.Context, wlt *wallet.Wallet, userId wallet.UserID) error {
+	query := `UPDATE wallets SET name = $1, wallet_type = $2, balance = $3, updated_at = $4 WHERE id = $5 AND user_id = $6`
 
 	_, err := r.db.ExecContext(ctx, query,
 		wlt.Name(),
@@ -140,6 +140,7 @@ func (r *WalletRepo) Update(ctx context.Context, wlt *wallet.Wallet) error {
 		wlt.Balance(),
 		time.Now(),
 		wlt.ID(),
+		userId,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update wallet: %w", err)
@@ -147,10 +148,10 @@ func (r *WalletRepo) Update(ctx context.Context, wlt *wallet.Wallet) error {
 	return nil
 }
 
-func (r *WalletRepo) Delete(ctx context.Context, wlt *wallet.Wallet) error {
-	query := `DELETE FROM wallets WHERE id = $1`
+func (r *WalletRepo) Delete(ctx context.Context, wlt *wallet.Wallet, userId wallet.UserID) error {
+	query := `DELETE FROM wallets WHERE id = $1 AND user_id = $2`
 
-	_, err := r.db.ExecContext(ctx, query, wlt.ID())
+	_, err := r.db.ExecContext(ctx, query, wlt.ID(), userId)
 	if err != nil {
 		return fmt.Errorf("failed to delete wallet: %w", err)
 	}

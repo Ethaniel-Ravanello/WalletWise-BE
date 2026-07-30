@@ -6,7 +6,17 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
 	"walletwise/internal/domain/wallet"
+)
+
+var (
+	ErrMaxWalletsReached   = errors.New("maximum number of wallets reached")
+	ErrDuplicateWalletName = errors.New("wallet with this name already exists")
+	ErrWalletNotFound      = errors.New("wallet not found")
+	ErrUnauthorizedWallet  = errors.New("unauthorized access to wallet")
+	ErrInvalidUserID       = errors.New("invalid user id")
+	ErrWalletsEmpty        = errors.New("no wallets found")
 )
 
 type WalletInput struct {
@@ -24,132 +34,170 @@ type WalletUpdateInput struct {
 	WalletType string
 	Balance    uint64
 }
+
 type Service struct {
 	repo wallet.Repository
 }
 
-func NewWalletService(repo wallet.Repository) *Service { return &Service{repo: repo} }
+func NewService(repo wallet.Repository) *Service {
+	return &Service{repo: repo}
+}
 
-func (w *Service) CreateWallet(ctx context.Context, input WalletInput) error {
-	allWallets, err := w.repo.SearchAll(ctx, wallet.UserID(input.UserID))
+// NewWalletService is an alias constructor for backward compatibility
+func NewWalletService(repo wallet.Repository) *Service {
+	return NewService(repo)
+}
+
+func (s *Service) CreateWallet(ctx context.Context, input WalletInput) error {
+	allWallets, err := s.repo.SearchAll(ctx, wallet.UserID(input.UserID))
 	if err != nil {
-		return err
+		return fmt.Errorf("search existing wallets: %w", err)
 	}
-	if len(allWallets) == 10 {
-		return errors.New("Wallet Mencapai Jumlah Maksimal")
+
+	if len(allWallets) >= 10 {
+		return ErrMaxWalletsReached
 	}
 
 	for _, existWallet := range allWallets {
 		if strings.EqualFold(existWallet.Name(), input.WalletName) {
-			return errors.New("Duplikat Wallet")
+			return ErrDuplicateWalletName
 		}
 	}
 
-	wallets, err := wallet.NewWallet(
+	newWallet, err := wallet.NewWallet(
 		wallet.UserID(input.UserID),
 		input.WalletName,
 		input.WalletType,
 		0,
 		time.Now(),
-		time.Now())
+		time.Now(),
+	)
 	if err != nil {
-		return err
+		return fmt.Errorf("create wallet entity: %w", err)
 	}
-	return w.repo.Save(ctx, wallets)
+
+	if err := s.repo.Save(ctx, newWallet); err != nil {
+		return fmt.Errorf("save wallet: %w", err)
+	}
+	return nil
 }
 
-func (w *Service) SearchAllWallet(ctx context.Context, userID uint64) ([]*wallet.Wallet, error) {
-	allWallets, err := w.repo.SearchAll(ctx, wallet.UserID(userID))
+func (s *Service) GetAllWallets(ctx context.Context, userID uint64) ([]*wallet.Wallet, error) {
+	allWallets, err := s.repo.SearchAll(ctx, wallet.UserID(userID))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("search wallets: %w", err)
 	}
 	if len(allWallets) == 0 {
-		return nil, errors.New("Wallet Kosong")
+		return nil, ErrWalletsEmpty
 	}
 	return allWallets, nil
 }
 
-func (w *Service) SearchWalletByID(ctx context.Context, walletID uint64) (*wallet.Wallet, error) {
-	wallet, err := w.repo.SearchByID(ctx, wallet.WalletID(walletID))
+func (s *Service) GetWalletByID(ctx context.Context, walletID uint64, userId uint64) (*wallet.Wallet, error) {
+	w, err := s.repo.SearchByID(ctx, wallet.WalletID(walletID), wallet.UserID(userId))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("search wallet by id: %w", err)
 	}
-	return wallet, nil
+	return w, nil
 }
 
-func (w *Service) UpdateWallet(ctx context.Context, walletUpdate WalletUpdateInput) error {
-	checkWallet, err := w.repo.SearchByID(ctx, wallet.WalletID(walletUpdate.ID))
+func (s *Service) UpdateWallet(ctx context.Context, walletUpdate WalletUpdateInput, userId uint64) error {
+	if walletUpdate.UserID != userId {
+		return ErrInvalidUserID
+	}
+
+	walletUpdate.UserID = userId
+
+	existingWallet, err := s.repo.SearchByID(ctx, wallet.WalletID(walletUpdate.ID), wallet.UserID(walletUpdate.UserID))
 	if err != nil {
-		return errors.New("Wallet Tidak Ditemukan")
+		return ErrWalletNotFound
 	}
-	if checkWallet.UserID() != wallet.UserID(walletUpdate.UserID) {
-		return errors.New("Invalid User Wallet")
+	if existingWallet.UserID() != wallet.UserID(walletUpdate.UserID) {
+		return ErrUnauthorizedWallet
 	}
-	if !strings.EqualFold(walletUpdate.WalletName, checkWallet.Name()) {
-		checkName, err := w.repo.SearchByID(ctx, wallet.WalletID(walletUpdate.ID))
+
+	if !strings.EqualFold(walletUpdate.WalletName, existingWallet.Name()) {
+		allWallets, err := s.repo.SearchAll(ctx, wallet.UserID(walletUpdate.UserID))
 		if err != nil {
-			return errors.New("Internal Error")
+			return fmt.Errorf("search wallets for duplicate check: %w", err)
 		}
-		if strings.EqualFold(checkName.Name(), walletUpdate.WalletType) {
-			return errors.New("Wallet Duplicate")
+		for _, w := range allWallets {
+			if w.ID() != existingWallet.ID() && strings.EqualFold(w.Name(), walletUpdate.WalletName) {
+				return ErrDuplicateWalletName
+			}
 		}
 	}
-	err = checkWallet.UpdateWallet(
+
+	err = existingWallet.UpdateWallet(
 		wallet.WalletID(walletUpdate.ID),
 		wallet.UserID(walletUpdate.UserID),
 		walletUpdate.WalletName,
 		walletUpdate.WalletType,
-		checkWallet.Balance(),
-		checkWallet.CreatedAt(),
-		time.Now())
+		existingWallet.Balance(),
+		existingWallet.CreatedAt(),
+		time.Now(),
+	)
 	if err != nil {
-		return err
+		return fmt.Errorf("update wallet entity: %w", err)
 	}
-	return w.repo.Update(ctx, checkWallet)
+
+	if err := s.repo.Update(ctx, existingWallet, wallet.UserID(walletUpdate.UserID)); err != nil {
+		return fmt.Errorf("update wallet in repo: %w", err)
+	}
+	return nil
 }
 
-func (w *Service) DeleteWallet(ctx context.Context, input WalletInput) error {
-	checkWallet, err := w.repo.SearchByID(ctx, wallet.WalletID(input.ID))
+func (s *Service) DeleteWallet(ctx context.Context, input WalletInput, userId uint64) error {
+	if input.UserID != userId {
+		return ErrInvalidUserID
+	}
+
+	input.UserID = userId
+
+	existingWallet, err := s.repo.SearchByID(ctx, wallet.WalletID(input.ID), wallet.UserID(input.UserID))
 	if err != nil {
-		return errors.New("Wallet Tidak Ditemukan")
+		return ErrWalletNotFound
 	}
-	fmt.Print(checkWallet.UserID())
-	fmt.Println(wallet.UserID(input.UserID))
-	if checkWallet.UserID() != wallet.UserID(input.UserID) {
-		return errors.New("Invalid User Wallet")
+
+	if existingWallet.UserID() != wallet.UserID(input.UserID) {
+		return ErrUnauthorizedWallet
 	}
-	return w.repo.Delete(ctx, checkWallet)
+
+	if err := s.repo.Delete(ctx, existingWallet, wallet.UserID(input.UserID)); err != nil {
+		return fmt.Errorf("delete wallet: %w", err)
+	}
+	return nil
 }
 
-func (w *Service) SearchHighestBalanceWallet(ctx context.Context, userId wallet.UserID) (*wallet.Wallet, error) {
-	if userId <= 0 {
-		return nil, errors.New("Invalid User ID")
+func (s *Service) GetHighestBalanceWallet(ctx context.Context, userID wallet.UserID) (*wallet.Wallet, error) {
+	if userID <= 0 {
+		return nil, ErrInvalidUserID
 	}
-	highWallet, err := w.repo.SearchHighestBalance(ctx, userId)
+	highWallet, err := s.repo.SearchHighestBalance(ctx, userID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get highest balance wallet: %w", err)
 	}
 	return highWallet, nil
 }
 
-func (w *Service) SearchMostActiveWallet(ctx context.Context, userId wallet.UserID) (*wallet.Wallet, error) {
-	if userId <= 0 {
-		return nil, errors.New("Invalid User ID")
+func (s *Service) GetMostActiveWallet(ctx context.Context, userID wallet.UserID) (*wallet.Wallet, error) {
+	if userID <= 0 {
+		return nil, ErrInvalidUserID
 	}
-	activeWallet, err := w.repo.SearchMostActive(ctx, userId)
+	activeWallet, err := s.repo.SearchMostActive(ctx, userID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get most active wallet: %w", err)
 	}
 	return activeWallet, nil
 }
 
-func (w *Service) SearchTotalBalanceWallet(ctx context.Context, userId wallet.UserID) (uint64, error) {
-	if userId <= 0 {
-		return 0, errors.New("Invalid User ID")
+func (s *Service) GetTotalBalance(ctx context.Context, userID wallet.UserID) (uint64, error) {
+	if userID <= 0 {
+		return 0, ErrInvalidUserID
 	}
-	totalBalance, err := w.repo.SearchTotalBalance(ctx, userId)
+	totalBalance, err := s.repo.SearchTotalBalance(ctx, userID)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("get total balance: %w", err)
 	}
 	return totalBalance, nil
 }

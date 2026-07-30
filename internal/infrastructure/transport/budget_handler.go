@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"walletwise/internal/middleware"
 
 	service "walletwise/internal/application/budget"
 )
@@ -32,11 +33,18 @@ func NewBudgetHandler(svc *service.Service) *BudgetHandler {
 }
 
 func (h *BudgetHandler) CreateBudget(w http.ResponseWriter, r *http.Request) {
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+	}
 	var req CreateBudgetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		WriteJSON(w, http.StatusBadRequest, "Invalid request payload", nil)
 		return
 	}
+
+	req.UserID = userId
 
 	if req.UserID == 0 || req.CategoryID == 0 || req.Month == 0 || req.Year == 0 {
 		WriteJSON(w, http.StatusBadRequest, "user_id, category_id, month, and year are required", nil)
@@ -61,6 +69,12 @@ func (h *BudgetHandler) CreateBudget(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BudgetHandler) GetBudgetByID(w http.ResponseWriter, r *http.Request) {
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+	}
+
 	idStr := r.PathValue("id")
 	budgetID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
@@ -68,7 +82,7 @@ func (h *BudgetHandler) GetBudgetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	b, err := h.svc.GetBudgetByID(r.Context(), budgetID)
+	b, err := h.svc.GetBudgetByID(r.Context(), budgetID, userId)
 	if err != nil {
 		WriteJSON(w, http.StatusNotFound, "Budget not found", nil)
 		return
@@ -80,25 +94,29 @@ func (h *BudgetHandler) GetBudgetByID(w http.ResponseWriter, r *http.Request) {
 func (h *BudgetHandler) GetBudgetsByMonth(w http.ResponseWriter, r *http.Request) {
 	queryParams := r.URL.Query()
 
-	userIDStr := queryParams.Get("user_id")
 	monthStr := queryParams.Get("month")
 	yearStr := queryParams.Get("year")
 
-	if userIDStr == "" || monthStr == "" || yearStr == "" {
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+	}
+
+	if userId == 0 || monthStr == "" || yearStr == "" {
 		WriteJSON(w, http.StatusBadRequest, "user_id, month, and year query parameters are required", nil)
 		return
 	}
 
-	userID, err1 := strconv.ParseUint(userIDStr, 10, 64)
 	month, err2 := strconv.Atoi(monthStr)
 	year, err3 := strconv.Atoi(yearStr)
 
-	if err1 != nil || err2 != nil || err3 != nil {
+	if err2 != nil || err3 != nil {
 		WriteJSON(w, http.StatusBadRequest, "Invalid user_id, month, or year format", nil)
 		return
 	}
 
-	budgets, err := h.svc.GetBudgetsByMonth(r.Context(), userID, month, year)
+	budgets, err := h.svc.GetBudgetsByMonth(r.Context(), userId, month, year)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
@@ -112,6 +130,12 @@ func (h *BudgetHandler) GetBudgetsByMonth(w http.ResponseWriter, r *http.Request
 }
 
 func (h *BudgetHandler) UpdateBudget(w http.ResponseWriter, r *http.Request) {
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+	}
+
 	idStr := r.PathValue("id")
 	budgetID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
@@ -133,7 +157,7 @@ func (h *BudgetHandler) UpdateBudget(w http.ResponseWriter, r *http.Request) {
 		Amount:     req.Amount,
 	}
 
-	if err := h.svc.UpdateBudget(r.Context(), input); err != nil {
+	if err := h.svc.UpdateBudget(r.Context(), input, userId); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
@@ -142,6 +166,12 @@ func (h *BudgetHandler) UpdateBudget(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BudgetHandler) DeleteBudget(w http.ResponseWriter, r *http.Request) {
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+	}
+
 	idStr := r.PathValue("id")
 	budgetID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
@@ -149,12 +179,10 @@ func (h *BudgetHandler) DeleteBudget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.DeleteBudget(r.Context(), budgetID); err != nil {
+	if err := h.svc.DeleteBudget(r.Context(), budgetID, userId); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
 	WriteJSON(w, http.StatusOK, "Budget deleted successfully", nil)
 }
-
-

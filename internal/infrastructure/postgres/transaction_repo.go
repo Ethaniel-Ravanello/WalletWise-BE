@@ -134,9 +134,9 @@ func (r *TransactionRepo) Search(ctx context.Context, filter transaction.FilterT
 	return transactions, nil
 }
 
-func (r *TransactionRepo) SearchByID(ctx context.Context, trxID transaction.TransactionID) (*transaction.Transaction, error) {
+func (r *TransactionRepo) SearchByID(ctx context.Context, trxID transaction.TransactionID, userId transaction.UserID) (*transaction.Transaction, error) {
 	query := `SELECT id, user_id, goal_id, category_id, amount, description, transaction_type, wallet_id, transaction_date, created_at, updated_at 
-	          FROM transactions WHERE id = $1`
+	          FROM transactions WHERE id = $1 AND user_id = $2`
 
 	var (
 		id              uint64
@@ -152,7 +152,7 @@ func (r *TransactionRepo) SearchByID(ctx context.Context, trxID transaction.Tran
 		updatedAt       time.Time
 	)
 
-	row := r.db.QueryRowContext(ctx, query, trxID)
+	row := r.db.QueryRowContext(ctx, query, trxID, userId)
 	err := row.Scan(
 		&id,
 		&userID,
@@ -385,21 +385,21 @@ func (r *TransactionRepo) Save(ctx context.Context, trx *transaction.Transaction
 	return sqlTx.Commit()
 }
 
-func (r *TransactionRepo) Update(ctx context.Context, trx *transaction.Transaction) error {
+func (r *TransactionRepo) Update(ctx context.Context, trx *transaction.Transaction, userId transaction.UserID) error {
 	sqlTx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer sqlTx.Rollback()
 
-	getOldQuery := `SELECT user_id, goal_id, amount, transaction_type FROM transactions WHERE id = $1 FOR UPDATE`
+	getOldQuery := `SELECT user_id, goal_id, amount, transaction_type FROM transactions WHERE id = $1 AND user_id = $2 FOR UPDATE`
 	var (
 		oldUserID     uint64
 		oldGoalIDNull sql.NullInt64
 		oldAmount     int64
 		oldType       string
 	)
-	err = sqlTx.QueryRowContext(ctx, getOldQuery, trx.ID()).Scan(&oldUserID, &oldGoalIDNull, &oldAmount, &oldType)
+	err = sqlTx.QueryRowContext(ctx, getOldQuery, trx.ID(), userId).Scan(&oldUserID, &oldGoalIDNull, &oldAmount, &oldType)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("failed to fetch old transaction: %w", err)
 	}
@@ -467,21 +467,21 @@ func (r *TransactionRepo) Update(ctx context.Context, trx *transaction.Transacti
 	return sqlTx.Commit()
 }
 
-func (r *TransactionRepo) Delete(ctx context.Context, trxID transaction.TransactionID) error {
+func (r *TransactionRepo) Delete(ctx context.Context, trxID transaction.TransactionID, userId transaction.UserID) error {
 	sqlTx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer sqlTx.Rollback()
 
-	getOldQuery := `SELECT user_id, goal_id, amount, transaction_type FROM transactions WHERE id = $1 FOR UPDATE`
+	getOldQuery := `SELECT user_id, goal_id, amount, transaction_type FROM transactions WHERE id = $1 AND user_id = $2 FOR UPDATE`
 	var (
 		oldUserID     uint64
 		oldGoalIDNull sql.NullInt64
 		oldAmount     int64
 		oldType       string
 	)
-	err = sqlTx.QueryRowContext(ctx, getOldQuery, trxID).Scan(&oldUserID, &oldGoalIDNull, &oldAmount, &oldType)
+	err = sqlTx.QueryRowContext(ctx, getOldQuery, trxID, userId).Scan(&oldUserID, &oldGoalIDNull, &oldAmount, &oldType)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("failed to fetch transaction to delete: %w", err)
 	}

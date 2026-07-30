@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+	"walletwise/internal/middleware"
 
 	service "walletwise/internal/application/transaction"
 	"walletwise/internal/domain/transaction"
@@ -169,6 +170,12 @@ func (h *TransactionHandler) GetTransactions(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *TransactionHandler) GetTransactionById(w http.ResponseWriter, r *http.Request) {
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+	}
+
 	idStr := r.PathValue("id")
 	trxID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
@@ -176,7 +183,7 @@ func (h *TransactionHandler) GetTransactionById(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	tx, err := h.svc.GetTransactionById(r.Context(), transaction.TransactionID(trxID))
+	tx, err := h.svc.GetTransactionByID(r.Context(), transaction.TransactionID(trxID), transaction.UserID(userId))
 	if err != nil {
 		WriteJSON(w, http.StatusNotFound, "Transaction not found", nil)
 		return
@@ -186,6 +193,12 @@ func (h *TransactionHandler) GetTransactionById(w http.ResponseWriter, r *http.R
 }
 
 func (h *TransactionHandler) UpdateTransaction(w http.ResponseWriter, r *http.Request) {
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+	}
+
 	idStr := r.PathValue("id")
 	trxID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
@@ -210,7 +223,7 @@ func (h *TransactionHandler) UpdateTransaction(w http.ResponseWriter, r *http.Re
 		Date:            req.Date,
 	}
 
-	if err := h.svc.UpdateTransaction(r.Context(), input); err != nil {
+	if err := h.svc.UpdateTransaction(r.Context(), input, transaction.UserID(userId)); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
@@ -219,6 +232,12 @@ func (h *TransactionHandler) UpdateTransaction(w http.ResponseWriter, r *http.Re
 }
 
 func (h *TransactionHandler) DeleteTransaction(w http.ResponseWriter, r *http.Request) {
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+	}
+
 	idStr := r.PathValue("id")
 	trxID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
@@ -226,7 +245,7 @@ func (h *TransactionHandler) DeleteTransaction(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if err := h.svc.DeleteTransaction(r.Context(), transaction.TransactionID(trxID)); err != nil {
+	if err := h.svc.DeleteTransaction(r.Context(), transaction.TransactionID(trxID), transaction.UserID(userId)); err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
@@ -398,4 +417,3 @@ func toTransactionResponse(tx *transaction.Transaction) TransactionResponse {
 		TransactionDate: tx.TransactionDate(),
 	}
 }
-

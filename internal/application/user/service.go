@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"time"
+
 	"walletwise/internal/domain/users"
 )
 
@@ -28,72 +29,89 @@ type Service struct {
 	repo users.Repository
 }
 
-func NewService(repo users.Repository) *Service { return &Service{repo: repo} }
+func NewService(repo users.Repository) *Service {
+	return &Service{repo: repo}
+}
 
-func (u *Service) CreateUser(ctx context.Context, input UserInput) (*users.User, error) {
-	trx, err := users.NewUser(
+func (s *Service) CreateUser(ctx context.Context, input UserInput) (*users.User, error) {
+	newUser, err := users.NewUser(
 		input.Username,
 		input.Email,
 		input.Password,
 		users.MonthlyLimit(input.MonthlyLimit),
 		input.IsActive,
 		time.Now(),
-		time.Now())
-	if err != nil {
-		return nil, fmt.Errorf("error creating new users: %w", err)
-	}
-	if err := u.repo.Save(ctx, trx); err != nil {
-		return nil, fmt.Errorf("error saving users: %w", err)
-	}
-	return trx, nil
-}
-
-func (u *Service) SearchUserById(ctx context.Context, userId users.UserID) (*users.User, error) {
-	user, err := u.repo.FindByID(ctx, userId)
-	if err != nil {
-		return nil, fmt.Errorf("error finding users: %w", err)
-	}
-	return user, nil
-}
-
-func (u *Service) SearchUserByEmail(ctx context.Context, email string) (*users.User, error) {
-	user, err := u.repo.FindByEmail(ctx, email)
-	if err != nil {
-		return nil, fmt.Errorf("error finding users: %w", err)
-	}
-	return user, nil
-}
-
-func (u *Service) UpdateUser(ctx context.Context, userInput *UserUpdateInput) error {
-	fmt.Println(userInput)
-	existingTrx, err := u.SearchUserById(ctx, users.UserID(userInput.ID))
-	fmt.Println(existingTrx)
-	if err != nil {
-		return fmt.Errorf("error finding users: %w", err)
-	}
-	err = existingTrx.UpdateUser(
-		userInput.Username,
-		userInput.Email,
-		userInput.Password,
-		users.MonthlyLimit(userInput.MonthlyLimit),
-		userInput.IsActive,
+		time.Now(),
 	)
 	if err != nil {
-		return fmt.Errorf("error updating user entity: %w", err)
+		return nil, fmt.Errorf("create user entity: %w", err)
 	}
-	err = u.repo.Update(ctx, existingTrx)
+
+	if err := s.repo.Save(ctx, newUser); err != nil {
+		return nil, fmt.Errorf("save user: %w", err)
+	}
+	return newUser, nil
+}
+
+func (s *Service) GetUserByID(ctx context.Context, userID uint64) (*users.User, error) {
+	user, err := s.repo.FindByID(ctx, users.UserID(userID))
 	if err != nil {
-		return fmt.Errorf("error updating users: %w", err)
+		return nil, fmt.Errorf("find user by id: %w", err)
+	}
+	return user, nil
+}
+
+func (s *Service) GetUserByEmail(ctx context.Context, email string) (*users.User, error) {
+	user, err := s.repo.FindByEmail(ctx, email)
+	if err != nil {
+		return nil, fmt.Errorf("find user by email: %w", err)
+	}
+	return user, nil
+}
+
+func (s *Service) UpdateUser(ctx context.Context, input *UserUpdateInput, userId uint64) error {
+	if input.ID != userId {
+		return fmt.Errorf("invalid user ID")
+	}
+
+	input.ID = userId
+
+	existingUser, err := s.GetUserByID(ctx, userId)
+	if err != nil {
+		return fmt.Errorf("find existing user: %w", err)
+	}
+
+	err = existingUser.UpdateUser(
+		input.Username,
+		input.Email,
+		input.Password,
+		users.MonthlyLimit(input.MonthlyLimit),
+		input.IsActive,
+	)
+	if err != nil {
+		return fmt.Errorf("update user entity: %w", err)
+	}
+
+	if err := s.repo.Update(ctx, existingUser); err != nil {
+		return fmt.Errorf("update user in repo: %w", err)
 	}
 	return nil
 }
 
-func (u *Service) DeleteUser(ctx context.Context, userInput UserUpdateInput) error {
-	existingTrx, err := u.SearchUserById(ctx, users.UserID(userInput.ID))
+func (s *Service) DeleteUser(ctx context.Context, input UserUpdateInput, userId uint64) error {
+	if input.ID != userId {
+		return fmt.Errorf("invalid user ID")
+	}
 
-	err = u.repo.Delete(ctx, existingTrx)
+	input.ID = userId
+
+	existingUser, err := s.GetUserByID(ctx, input.ID)
 	if err != nil {
-		return fmt.Errorf("error deleting users: %w", err)
+		return fmt.Errorf("find existing user: %w", err)
+	}
+
+	if err := s.repo.Delete(ctx, existingUser); err != nil {
+		return fmt.Errorf("delete user: %w", err)
 	}
 	return nil
 }

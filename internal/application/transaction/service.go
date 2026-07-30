@@ -1,15 +1,14 @@
-package service
+package transaction
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
-	"walletwise/internal/application/saving_goal"
+
 	"walletwise/internal/domain/transaction"
 )
 
-type TrxInput struct {
+type TransactionInput struct {
 	UserID          uint64
 	GoalID          uint64
 	Amount          int64
@@ -20,8 +19,9 @@ type TrxInput struct {
 	Date            time.Time
 }
 
-type TrxUpdate struct {
+type UpdateTransactionInput struct {
 	ID              uint64
+	UserID          uint64
 	GoalID          uint64
 	Amount          int64
 	CategoryID      uint64
@@ -30,6 +30,10 @@ type TrxUpdate struct {
 	WalletID        uint64
 	Date            time.Time
 }
+
+// Backward compatibility type aliases
+type TrxInput = TransactionInput
+type TrxUpdate = UpdateTransactionInput
 
 type GetTransactionsInput struct {
 	UserID          uint64
@@ -44,17 +48,14 @@ type GetTransactionsInput struct {
 }
 
 type Service struct {
-	repo        transaction.Repository
-	db          *sql.DB
-	goalService saving_goal.Service
+	repo transaction.Repository
 }
 
 func NewService(repo transaction.Repository) *Service {
 	return &Service{repo: repo}
 }
 
-func (s *Service) CreateTransaction(ctx context.Context, input *TrxInput) (*transaction.Transaction, error) {
-
+func (s *Service) CreateTransaction(ctx context.Context, input *TransactionInput) (*transaction.Transaction, error) {
 	var goalIDPtr *transaction.GoalID
 	if input.GoalID != 0 {
 		gID := transaction.GoalID(input.GoalID)
@@ -72,52 +73,69 @@ func (s *Service) CreateTransaction(ctx context.Context, input *TrxInput) (*tran
 		input.Date,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error creating transaction: %w", err)
+		return nil, fmt.Errorf("create transaction entity: %w", err)
 	}
 
 	if err := s.repo.Save(ctx, tx); err != nil {
-		return nil, fmt.Errorf("failed to save transaction: %w", err)
+		return nil, fmt.Errorf("save transaction: %w", err)
 	}
 	return tx, nil
 }
 
 func (s *Service) GetTransaction(ctx context.Context, input *GetTransactionsInput) ([]*transaction.Transaction, error) {
-	newGoalID := transaction.GoalID(*input.GoalID)
-	newAmount := transaction.Money(*input.Amount)
-	newCategoryID := transaction.CategoryID(*input.CategoryID)
-	newTrasactionType := transaction.TransactionType(*input.TransactionType)
-	newWalletID := transaction.WalletID(*input.WalletID)
+	filter := transaction.FilterTrx{
+		UserID:    transaction.UserID(input.UserID),
+		StartDate: input.StartDate,
+		EndDate:   input.EndDate,
+		Limit:     input.Limit,
+	}
 
-	trx, err := s.repo.Search(ctx, transaction.FilterTrx{
-		UserID:          transaction.UserID(input.UserID),
-		GoalID:          &newGoalID,
-		Amount:          &newAmount,
-		CategoryID:      &newCategoryID,
-		TransactionType: &newTrasactionType,
-		WalletID:        &newWalletID,
-		StartDate:       input.StartDate,
-		EndDate:         input.EndDate,
-		Limit:           input.Limit,
-	})
+	if input.GoalID != nil && *input.GoalID != 0 {
+		gID := transaction.GoalID(*input.GoalID)
+		filter.GoalID = &gID
+	}
+	if input.Amount != nil && *input.Amount != 0 {
+		amt := transaction.Money(*input.Amount)
+		filter.Amount = &amt
+	}
+	if input.CategoryID != nil && *input.CategoryID != 0 {
+		catID := transaction.CategoryID(*input.CategoryID)
+		filter.CategoryID = &catID
+	}
+	if input.TransactionType != nil && *input.TransactionType != "" {
+		tType := transaction.TransactionType(*input.TransactionType)
+		filter.TransactionType = &tType
+	}
+	if input.WalletID != nil && *input.WalletID != 0 {
+		wID := transaction.WalletID(*input.WalletID)
+		filter.WalletID = &wID
+	}
+
+	trx, err := s.repo.Search(ctx, filter)
 	if err != nil {
-		return nil, fmt.Errorf("error getting transaction: %w", err)
+		return nil, fmt.Errorf("search transactions: %w", err)
 	}
 	return trx, nil
 }
 
-func (s *Service) GetTransactionById(ctx context.Context, trxId transaction.TransactionID) (*transaction.Transaction, error) {
-	trx, err := s.repo.SearchByID(ctx, trxId)
-
+func (s *Service) GetTransactionByID(ctx context.Context, trxID transaction.TransactionID, userId transaction.UserID) (*transaction.Transaction, error) {
+	trx, err := s.repo.SearchByID(ctx, trxID, userId)
 	if err != nil {
-		return nil, fmt.Errorf("error getting transaction: %w", err)
+		return nil, fmt.Errorf("get transaction by id: %w", err)
 	}
 	return trx, nil
 }
 
-func (s *Service) UpdateTransaction(ctx context.Context, input *TrxUpdate) error {
-	existingTrx, err := s.repo.SearchByID(ctx, transaction.TransactionID(input.ID))
+func (s *Service) UpdateTransaction(ctx context.Context, input *UpdateTransactionInput, userId transaction.UserID) error {
+	if transaction.UserID(input.UserID) != userId {
+		return fmt.Errorf("Unauthorized User")
+	}
+
+	input.UserID = uint64(userId)
+
+	existingTrx, err := s.repo.SearchByID(ctx, transaction.TransactionID(input.ID), userId)
 	if err != nil {
-		return fmt.Errorf("error getting transaction: %w", err)
+		return fmt.Errorf("find transaction by id: %w", err)
 	}
 
 	var newGoalID *transaction.GoalID
@@ -133,49 +151,52 @@ func (s *Service) UpdateTransaction(ctx context.Context, input *TrxUpdate) error
 		input.Description,
 		transaction.TransactionType(input.TransactionType),
 		transaction.WalletID(input.WalletID),
-		input.Date)
+		input.Date,
+	)
 	if err != nil {
-		return fmt.Errorf("error updating transaction: %w", err)
+		return fmt.Errorf("update transaction entity: %w", err)
 	}
-	return s.repo.Update(ctx, existingTrx)
-}
-
-func (s *Service) DeleteTransaction(ctx context.Context, trxId transaction.TransactionID) error {
-	err := s.repo.Delete(ctx, trxId)
-	if err != nil {
-		return fmt.Errorf("error deleting transaction: %w", err)
+	if err := s.repo.Update(ctx, existingTrx, userId); err != nil {
+		return fmt.Errorf("update transaction in repo: %w", err)
 	}
 	return nil
 }
 
-func (s *Service) GetUserBalance(ctx context.Context, userId uint64, walletId uint64) (*transaction.Money, error) {
-	balance, err := s.repo.GetBalance(ctx, transaction.UserID(userId), transaction.WalletID(walletId))
+func (s *Service) DeleteTransaction(ctx context.Context, trxID transaction.TransactionID, userId transaction.UserID) error {
+	if err := s.repo.Delete(ctx, trxID, userId); err != nil {
+		return fmt.Errorf("delete transaction: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) GetUserBalance(ctx context.Context, userID uint64, walletID uint64) (*transaction.Money, error) {
+	balance, err := s.repo.GetBalance(ctx, transaction.UserID(userID), transaction.WalletID(walletID))
 	if err != nil {
-		return nil, fmt.Errorf("error getting users balance: %w", err)
+		return nil, fmt.Errorf("get user balance: %w", err)
 	}
 	return &balance, nil
 }
 
-func (s *Service) GetMonthlySummary(ctx context.Context, userId uint64, month int, year int) (*transaction.MonthlySummary, error) {
-	summary, err := s.repo.GetMonthlySummary(ctx, transaction.UserID(userId), month, year)
+func (s *Service) GetMonthlySummary(ctx context.Context, userID uint64, month int, year int) (*transaction.MonthlySummary, error) {
+	summary, err := s.repo.GetMonthlySummary(ctx, transaction.UserID(userID), month, year)
 	if err != nil {
-		return nil, fmt.Errorf("error getting monthly summary: %w", err)
+		return nil, fmt.Errorf("get monthly summary: %w", err)
 	}
 	return &summary, nil
 }
 
-func (s *Service) GetHighestExpense(ctx context.Context, userId uint64, month int, year int, limit int) (*transaction.Transaction, error) {
-	hiExpense, err := s.repo.GetHighestExpense(ctx, transaction.UserID(userId), month, year, limit)
+func (s *Service) GetHighestExpense(ctx context.Context, userID uint64, month int, year int, limit int) (*transaction.Transaction, error) {
+	highestExpense, err := s.repo.GetHighestExpense(ctx, transaction.UserID(userID), month, year, limit)
 	if err != nil {
-		return nil, fmt.Errorf("error getting highest expense: %w", err)
+		return nil, fmt.Errorf("get highest expense: %w", err)
 	}
-	return hiExpense, nil
+	return highestExpense, nil
 }
 
-func (s *Service) GetMostSpend(ctx context.Context, userId uint64, month int, year int, limit int) ([]*transaction.CategorySpend, error) {
-	catSpend, err := s.repo.GetMostSpend(ctx, transaction.UserID(userId), month, year, limit)
+func (s *Service) GetMostSpend(ctx context.Context, userID uint64, month int, year int, limit int) ([]*transaction.CategorySpend, error) {
+	categorySpend, err := s.repo.GetMostSpend(ctx, transaction.UserID(userID), month, year, limit)
 	if err != nil {
-		return nil, fmt.Errorf("error getting most spend: %w", err)
+		return nil, fmt.Errorf("get most spend: %w", err)
 	}
-	return catSpend, nil
+	return categorySpend, nil
 }

@@ -3,6 +3,7 @@ package budget
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"walletwise/internal/domain/budget"
@@ -68,85 +69,66 @@ func (s *Service) CreateBudget(ctx context.Context, input BudgetInput) (*BudgetD
 		time.Now(),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create budget entity: %w", err)
 	}
 
-	walletId, err := s.repo.Save(ctx, newBudget)
-	if err != nil {
-		return nil, err
+	if _, err := s.repo.Save(ctx, newBudget); err != nil {
+		return nil, fmt.Errorf("save budget: %w", err)
 	}
-	_ = walletId
 
 	totalSpent, err := s.repo.CalculateTotalSpent(ctx, budget.UserID(input.UserID), budget.CategoryID(input.CategoryID), input.Month, input.Year)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("calculate total spent: %w", err)
 	}
-	return &BudgetDetailResponse{
-		ID:            uint64(newBudget.ID()),
-		UserID:        uint64(newBudget.UserID()),
-		CategoryID:    uint64(newBudget.CategoryID()),
-		Month:         newBudget.Month(),
-		Year:          newBudget.Year(),
-		MaxAmount:     newBudget.Amount(),
-		CurrentAmount: totalSpent,
-		Remaining:     newBudget.Amount() - totalSpent,
-	}, nil
+
+	return buildBudgetDetailResponse(newBudget, totalSpent), nil
 }
 
-func (s *Service) GetBudgetByID(ctx context.Context, id uint64) (*BudgetDetailResponse, error) {
-	b, err := s.repo.FindByID(ctx, budget.BudgetID(id))
+func (s *Service) GetBudgetByID(ctx context.Context, id uint64, userId uint64) (*BudgetDetailResponse, error) {
+	b, err := s.repo.FindByID(ctx, budget.BudgetID(id), budget.UserID(userId))
+
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("find budget by id: %w", err)
 	}
 
-	totalSpent, _ := s.repo.CalculateTotalSpent(ctx, b.UserID(), b.CategoryID(), b.Month(), b.Year())
+	if b.UserID() != budget.UserID(userId) {
+		return nil, errors.New("Unauthorized Access")
+	}
 
-	return &BudgetDetailResponse{
-		ID:            uint64(b.ID()),
-		UserID:        uint64(b.UserID()),
-		CategoryID:    uint64(b.CategoryID()),
-		Month:         b.Month(),
-		Year:          b.Year(),
-		MaxAmount:     b.Amount(),
-		CurrentAmount: totalSpent,
-		Remaining:     b.Amount() - totalSpent,
-	}, nil
+	totalSpent, err := s.repo.CalculateTotalSpent(ctx, b.UserID(), b.CategoryID(), b.Month(), b.Year())
+	if err != nil {
+		return nil, fmt.Errorf("calculate total spent: %w", err)
+	}
+
+	return buildBudgetDetailResponse(b, totalSpent), nil
 }
 
 func (s *Service) GetBudgetsByMonth(ctx context.Context, userID uint64, month int, year int) ([]*BudgetDetailResponse, error) {
 	budgets, err := s.repo.FindByUserAndMonth(ctx, budget.UserID(userID), month, year)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("find budgets by user and month: %w", err)
 	}
 
 	if len(budgets) == 0 {
 		return nil, errors.New("no budgets found for this month")
 	}
 
-	var responses []*BudgetDetailResponse
+	responses := make([]*BudgetDetailResponse, 0, len(budgets))
 	for _, b := range budgets {
-
-		totalSpent, _ := s.repo.CalculateTotalSpent(ctx, b.UserID(), b.CategoryID(), b.Month(), b.Year())
-
-		responses = append(responses, &BudgetDetailResponse{
-			ID:            uint64(b.ID()),
-			UserID:        uint64(b.UserID()),
-			CategoryID:    uint64(b.CategoryID()),
-			Month:         b.Month(),
-			Year:          b.Year(),
-			MaxAmount:     b.Amount(),
-			CurrentAmount: totalSpent,
-			Remaining:     b.Amount() - totalSpent,
-		})
+		totalSpent, err := s.repo.CalculateTotalSpent(ctx, b.UserID(), b.CategoryID(), b.Month(), b.Year())
+		if err != nil {
+			return nil, fmt.Errorf("calculate total spent: %w", err)
+		}
+		responses = append(responses, buildBudgetDetailResponse(b, totalSpent))
 	}
 
 	return responses, nil
 }
 
-func (s *Service) UpdateBudget(ctx context.Context, input BudgetUpdateInput) error {
-	existingBudget, err := s.repo.FindByID(ctx, budget.BudgetID(input.ID))
+func (s *Service) UpdateBudget(ctx context.Context, input BudgetUpdateInput, userId uint64) error {
+	existingBudget, err := s.repo.FindByID(ctx, budget.BudgetID(input.ID), budget.UserID(userId))
 	if err != nil {
-		return err
+		return fmt.Errorf("find budget by id: %w", err)
 	}
 
 	if existingBudget.CategoryID() != budget.CategoryID(input.CategoryID) ||
@@ -173,12 +155,32 @@ func (s *Service) UpdateBudget(ctx context.Context, input BudgetUpdateInput) err
 		input.Amount,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("update budget entity: %w", err)
 	}
 
-	return s.repo.Update(ctx, existingBudget)
+	if err := s.repo.Update(ctx, existingBudget); err != nil {
+		return fmt.Errorf("update budget in repo: %w", err)
+	}
+
+	return nil
 }
 
-func (s *Service) DeleteBudget(ctx context.Context, id uint64) error {
-	return s.repo.Delete(ctx, budget.BudgetID(id))
+func (s *Service) DeleteBudget(ctx context.Context, id uint64, userId uint64) error {
+	if err := s.repo.Delete(ctx, budget.BudgetID(id), budget.UserID(userId)); err != nil {
+		return fmt.Errorf("delete budget: %w", err)
+	}
+	return nil
+}
+
+func buildBudgetDetailResponse(b *budget.Budget, totalSpent int64) *BudgetDetailResponse {
+	return &BudgetDetailResponse{
+		ID:            uint64(b.ID()),
+		UserID:        uint64(b.UserID()),
+		CategoryID:    uint64(b.CategoryID()),
+		Month:         b.Month(),
+		Year:          b.Year(),
+		MaxAmount:     b.Amount(),
+		CurrentAmount: totalSpent,
+		Remaining:     b.Amount() - totalSpent,
+	}
 }
