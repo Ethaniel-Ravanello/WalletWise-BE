@@ -1,27 +1,28 @@
-package categories
+package category
 
 import (
 	"context"
 	"fmt"
 
-	"walletwise/internal/domain/categories"
+	"walletwise/internal/domain/category"
 )
 
 type Service struct {
-	repo categories.Repository
+	repo category.Repository
 }
 
-func NewService(repo categories.Repository) *Service {
+func NewService(repo category.Repository) *Service {
 	return &Service{
 		repo: repo,
 	}
 }
 
-func (s *Service) GetAllCategories(ctx context.Context) ([]*categories.Categories, error) {
+func (s *Service) GetAllCategories(ctx context.Context) ([]*category.Category, error) {
 	allCategories, err := s.repo.SearchAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get all categories: %w", err)
 	}
 	return allCategories, nil
 }
+
 

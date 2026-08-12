@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"time"
 
-	service "walletwise/internal/application/categories"
-	"walletwise/internal/domain/categories"
+	service "walletwise/internal/application/category"
+	"walletwise/internal/domain/category"
 )
 
 type CategoryResponse struct {
@@ -16,15 +16,17 @@ type CategoryResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-type CategoriesHandler struct {
+type CategoryHandler struct {
 	svc *service.Service
 }
 
-func NewCategoriesHandler(svc *service.Service) *CategoriesHandler {
-	return &CategoriesHandler{svc: svc}
+type CategoriesHandler = CategoryHandler
+
+func NewCategoryHandler(svc *service.Service) *CategoryHandler {
+	return &CategoryHandler{svc: svc}
 }
 
-func (h *CategoriesHandler) GetAllCategories(w http.ResponseWriter, r *http.Request) {
+func (h *CategoryHandler) GetAllCategories(w http.ResponseWriter, r *http.Request) {
 	categoriesList, err := h.svc.GetAllCategories(r.Context())
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
@@ -39,17 +41,15 @@ func (h *CategoriesHandler) GetAllCategories(w http.ResponseWriter, r *http.Requ
 	WriteJSON(w, http.StatusOK, "Categories retrieved successfully", responses)
 }
 
-func toCategoryResponse(cat *categories.Categories) CategoryResponse {
+func toCategoryResponse(cat *category.Category) CategoryResponse {
 	if cat == nil {
 		return CategoryResponse{}
 	}
 	return CategoryResponse{
 		ID:        uint64(cat.ID()),
 		Name:      cat.Name(),
-		Type:      cat.CategoriesType(),
+		Type:      cat.CategoryType(),
 		Icon:      cat.Icon(),
 		CreatedAt: cat.CreatedAt(),
 	}
 }
-
-

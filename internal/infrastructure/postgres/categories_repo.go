@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"walletwise/internal/domain/categories"
+	"walletwise/internal/domain/category"
 )
 
 type CategoriesRepo struct {
@@ -17,9 +17,9 @@ func NewCategoriesRepo(db *sql.DB) *CategoriesRepo {
 	return &CategoriesRepo{db: db}
 }
 
-var _ categories.Repository = (*CategoriesRepo)(nil)
+var _ category.Repository = (*CategoriesRepo)(nil)
 
-func (r *CategoriesRepo) SearchAll(ctx context.Context) ([]*categories.Categories, error) {
+func (r *CategoriesRepo) SearchAll(ctx context.Context) ([]*category.Category, error) {
 	query := `SELECT id, name, type, icon, created_at FROM categories`
 
 	rows, err := r.db.QueryContext(ctx, query)
@@ -28,7 +28,7 @@ func (r *CategoriesRepo) SearchAll(ctx context.Context) ([]*categories.Categorie
 	}
 	defer rows.Close()
 
-	var categoriesList []*categories.Categories
+	var categoriesList []*category.Category
 	for rows.Next() {
 		var (
 			id           uint64
@@ -42,8 +42,8 @@ func (r *CategoriesRepo) SearchAll(ctx context.Context) ([]*categories.Categorie
 			return nil, fmt.Errorf("failed to scan category row: %w", err)
 		}
 
-		cat := categories.ReconstituteCategories(
-			categories.CategoriesID(id),
+		cat := category.ReconstituteCategory(
+			category.CategoryID(id),
 			name,
 			categoryType,
 			icon,
@@ -58,3 +58,4 @@ func (r *CategoriesRepo) SearchAll(ctx context.Context) ([]*categories.Categorie
 
 	return categoriesList, nil
 }
+

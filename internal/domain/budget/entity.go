@@ -46,10 +46,10 @@ func NewBudget(
 		return nil, errors.New("amount must be greater than zero")
 	}
 	if createdAt.IsZero() {
-		return nil, errors.New("created_at time is required")
+		createdAt = time.Now()
 	}
 	if updatedAt.IsZero() {
-		return nil, errors.New("updated_at time is required")
+		updatedAt = time.Now()
 	}
 
 	return &Budget{

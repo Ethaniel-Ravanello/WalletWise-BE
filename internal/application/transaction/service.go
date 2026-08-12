@@ -38,13 +38,15 @@ type TrxUpdate = UpdateTransactionInput
 type GetTransactionsInput struct {
 	UserID          uint64
 	GoalID          *uint64
-	Amount          *uint64
-	TransactionType *string
-	CategoryID      *uint64
-	WalletID        *uint64
-	StartDate       *time.Time
-	EndDate         *time.Time
+	Amount          uint64
+	TransactionType string
+	TransactionDate time.Time
+	CategoryID      uint64
+	WalletID        uint64
+	StartDate       time.Time
+	EndDate         time.Time
 	Limit           int
+	Page            int
 }
 
 type Service struct {
@@ -82,40 +84,46 @@ func (s *Service) CreateTransaction(ctx context.Context, input *TransactionInput
 	return tx, nil
 }
 
-func (s *Service) GetTransaction(ctx context.Context, input *GetTransactionsInput) ([]*transaction.Transaction, error) {
+func (s *Service) GetTransaction(ctx context.Context, input GetTransactionsInput) ([]*transaction.Transaction, int, error) {
 	filter := transaction.FilterTrx{
-		UserID:    transaction.UserID(input.UserID),
-		StartDate: input.StartDate,
-		EndDate:   input.EndDate,
-		Limit:     input.Limit,
+		UserID:          transaction.UserID(input.UserID),
+		GoalID:          (*transaction.GoalID)(input.GoalID),
+		Amount:          transaction.Money(input.Amount),
+		CategoryID:      transaction.CategoryID(input.CategoryID),
+		TransactionType: transaction.TransactionType(input.TransactionType),
+		WalletID:        transaction.WalletID(input.WalletID),
+		StartDate:       input.StartDate,
+		EndDate:         input.EndDate,
+		Limit:           input.Limit,
+		Page:            input.Page,
 	}
 
 	if input.GoalID != nil && *input.GoalID != 0 {
 		gID := transaction.GoalID(*input.GoalID)
 		filter.GoalID = &gID
 	}
-	if input.Amount != nil && *input.Amount != 0 {
-		amt := transaction.Money(*input.Amount)
-		filter.Amount = &amt
+	if input.Amount != 0 {
+		amt := transaction.Money(input.Amount)
+		filter.Amount = amt
 	}
-	if input.CategoryID != nil && *input.CategoryID != 0 {
-		catID := transaction.CategoryID(*input.CategoryID)
-		filter.CategoryID = &catID
+	if input.CategoryID != 0 {
+		catID := transaction.CategoryID(input.CategoryID)
+		filter.CategoryID = catID
 	}
-	if input.TransactionType != nil && *input.TransactionType != "" {
-		tType := transaction.TransactionType(*input.TransactionType)
-		filter.TransactionType = &tType
+	if input.TransactionType != "" {
+		tType := transaction.TransactionType(input.TransactionType)
+		filter.TransactionType = tType
 	}
-	if input.WalletID != nil && *input.WalletID != 0 {
-		wID := transaction.WalletID(*input.WalletID)
-		filter.WalletID = &wID
+	if input.WalletID != 0 {
+		wID := transaction.WalletID(input.WalletID)
+		filter.WalletID = wID
 	}
 
-	trx, err := s.repo.Search(ctx, filter)
+	trx, currPage, err := s.repo.Search(ctx, filter)
 	if err != nil {
-		return nil, fmt.Errorf("search transactions: %w", err)
+		return nil, 0, fmt.Errorf("search transactions: %w", err)
 	}
-	return trx, nil
+	return trx, currPage, nil
 }
 
 func (s *Service) GetTransactionByID(ctx context.Context, trxID transaction.TransactionID, userId transaction.UserID) (*transaction.Transaction, error) {

@@ -9,7 +9,7 @@ import (
 	"walletwise/internal/middleware"
 
 	service "walletwise/internal/application/user"
-	"walletwise/internal/domain/users"
+	"walletwise/internal/domain/user"
 )
 
 type UserResponse struct {
@@ -199,17 +199,18 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, "User deleted successfully", nil)
 }
 
-func toUserResponse(user *users.User) UserResponse {
-	if user == nil {
+func toUserResponse(u *user.User) UserResponse {
+	if u == nil {
 		return UserResponse{}
 	}
 	return UserResponse{
-		Username:     user.Username(),
-		Email:        user.Email(),
-		MonthlyLimit: uint64(user.MonthlyLimit()),
-		IsActive:     user.IsActive(),
-		CreatedAt:    user.CreatedAt(),
-		UpdatedAt:    user.UpdatedAt(),
+		ID:           uint64(u.ID()),
+		Username:     u.Username(),
+		Email:        u.Email(),
+		MonthlyLimit: uint64(u.MonthlyLimit()),
+		IsActive:     u.IsActive(),
+		CreatedAt:    u.CreatedAt(),
+		UpdatedAt:    u.UpdatedAt(),
 	}
 }
 

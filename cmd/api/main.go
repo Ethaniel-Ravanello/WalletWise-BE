@@ -6,7 +6,7 @@ import (
 	"walletwise/internal/middleware"
 
 	budgetService "walletwise/internal/application/budget"
-	categoriesService "walletwise/internal/application/categories"
+	categoryService "walletwise/internal/application/category"
 	savingGoalService "walletwise/internal/application/saving_goal"
 	trxService "walletwise/internal/application/transaction"
 	userService "walletwise/internal/application/user"
@@ -37,16 +37,16 @@ func main() {
 	userHandler := transport.NewUserHandler(usersService)
 
 	categoriesRepo := postgres.NewCategoriesRepo(db)
-	catService := categoriesService.NewService(categoriesRepo)
-	categoriesHandler := transport.NewCategoriesHandler(catService)
+	catService := categoryService.NewService(categoriesRepo)
+	categoriesHandler := transport.NewCategoryHandler(catService)
 
 	walletRepo := postgres.NewWalletRepo(db)
-	wService := walletService.NewWalletService(walletRepo)
+	wService := walletService.NewService(walletRepo)
 	walletHandler := transport.NewWalletHandler(wService)
 
 	savingGoalsRepo := postgres.NewSavingGoalsRepo(db)
 	savService := savingGoalService.NewService(savingGoalsRepo)
-	savingGoalsHandler := transport.NewSavingGoalsHandler(savService)
+	savingGoalsHandler := transport.NewSavingGoalHandler(savService)
 
 	budgetRepo := postgres.NewBudgetRepo(db)
 	budgetService := budgetService.NewService(budgetRepo)
@@ -59,7 +59,7 @@ func main() {
 
 	mux.Handle("POST /transactions", middleware.AuthMiddleware(http.HandlerFunc(trxHandler.CreateTransaction)))
 	mux.Handle("GET /transactions", middleware.AuthMiddleware(http.HandlerFunc(trxHandler.GetTransactions)))
-	mux.Handle("GET /transactions/{id}", middleware.AuthMiddleware(http.HandlerFunc(trxHandler.GetTransactionById)))
+	mux.Handle("GET /transactions/{id}", middleware.AuthMiddleware(http.HandlerFunc(trxHandler.GetTransactionByID)))
 	mux.Handle("PUT /transactions/{id}", middleware.AuthMiddleware(http.HandlerFunc(trxHandler.UpdateTransaction)))
 	mux.Handle("DELETE /transactions/{id}", middleware.AuthMiddleware(http.HandlerFunc(trxHandler.DeleteTransaction)))
 
@@ -73,9 +73,9 @@ func main() {
 	mux.Handle("GET /categories", middleware.AuthMiddleware(http.HandlerFunc(categoriesHandler.GetAllCategories)))
 
 	// --- Wallets ---
-	mux.Handle("POST /wallets", middleware.AuthMiddleware(http.HandlerFunc(walletHandler.CreateWallets)))
-	mux.Handle("GET /wallets", middleware.AuthMiddleware(http.HandlerFunc(walletHandler.SearchAllWallets)))
-	mux.Handle("GET /wallets/{id}", middleware.AuthMiddleware(http.HandlerFunc(walletHandler.SearchWalletsByID)))
+	mux.Handle("POST /wallets", middleware.AuthMiddleware(http.HandlerFunc(walletHandler.CreateWallet)))
+	mux.Handle("GET /wallets", middleware.AuthMiddleware(http.HandlerFunc(walletHandler.GetWallets)))
+	mux.Handle("GET /wallets/{id}", middleware.AuthMiddleware(http.HandlerFunc(walletHandler.GetWalletByID)))
 	mux.Handle("PUT /wallets/{id}", middleware.AuthMiddleware(http.HandlerFunc(walletHandler.UpdateWallet)))
 	mux.Handle("DELETE /wallets/{id}", middleware.AuthMiddleware(http.HandlerFunc(walletHandler.DeleteWallet)))
 
@@ -105,3 +105,4 @@ func main() {
 		log.Fatalf("Server mati secara tidak wajar: %v", err)
 	}
 }
+

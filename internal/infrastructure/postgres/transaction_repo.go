@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"walletwise/internal/domain/transaction"
@@ -20,7 +21,7 @@ func NewTransactionRepo(db *sql.DB) *TransactionRepo {
 
 var _ transaction.Repository = (*TransactionRepo)(nil)
 
-func (r *TransactionRepo) Search(ctx context.Context, filter transaction.FilterTrx) ([]*transaction.Transaction, error) {
+func (r *TransactionRepo) Search(ctx context.Context, filter transaction.FilterTrx) ([]*transaction.Transaction, int, error) {
 	counter := 1
 	query := fmt.Sprintf("SELECT id, user_id, goal_id, category_id, amount, description, transaction_type, wallet_id, transaction_date, created_at, updated_at FROM transactions WHERE user_id = $%d", counter)
 	args := []interface{}{filter.UserID}
@@ -31,46 +32,69 @@ func (r *TransactionRepo) Search(ctx context.Context, filter transaction.FilterT
 		args = append(args, *filter.GoalID)
 		counter++
 	}
-	if filter.Amount != nil {
+	if filter.Amount != 0 {
 		query += fmt.Sprintf(" AND amount = $%d", counter)
-		args = append(args, *filter.Amount)
+		args = append(args, filter.Amount)
 		counter++
 	}
-	if filter.CategoryID != nil {
+	if filter.CategoryID != 0 {
 		query += fmt.Sprintf(" AND category_id = $%d", counter)
-		args = append(args, *filter.CategoryID)
+		args = append(args, filter.CategoryID)
 		counter++
 	}
-	if filter.TransactionType != nil {
+	if filter.TransactionType != "" {
 		query += fmt.Sprintf(" AND transaction_type = $%d", counter)
-		args = append(args, *filter.TransactionType)
+		args = append(args, filter.TransactionType)
 		counter++
 	}
-	if filter.StartDate != nil {
+	if !filter.StartDate.IsZero() {
 		query += fmt.Sprintf(" AND transaction_date >= $%d", counter)
-		args = append(args, *filter.StartDate)
+		args = append(args, filter.StartDate)
 		counter++
 	}
-	if filter.EndDate != nil {
+	if !filter.EndDate.IsZero() {
 		query += fmt.Sprintf(" AND transaction_date <= $%d", counter)
-		args = append(args, *filter.EndDate)
+		args = append(args, filter.EndDate)
 		counter++
 	}
-	if filter.WalletID != nil {
+	if filter.WalletID != 0 {
 		query += fmt.Sprintf(" AND wallet_id = $%d", counter)
-		args = append(args, *filter.WalletID)
+		args = append(args, filter.WalletID)
 		counter++
 	}
+
+	countQuery := strings.Replace(query, "SELECT id, user_id, goal_id, category_id, amount, description, transaction_type, wallet_id, transaction_date, created_at, updated_at", "SELECT COUNT(id)", 1)
+
+	var totalData int
+	// Eksekusi khusus untuk hitung jumlah
+	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&totalData); err != nil {
+		return nil, 0, fmt.Errorf("failed to count total transactions: %w", err)
+	}
+
+	// ==========================================
+	// 3. Lanjut Pasang Sorting & Pagination
+	// ==========================================
 	query += " ORDER BY transaction_date DESC"
+
 	if filter.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT $%d", counter)
 		args = append(args, filter.Limit)
+		counter++
+
+		// Pasang OFFSET dari field Page yang baru ditambahin
+		page := filter.Page
+		if page < 1 {
+			page = 1 // Biar kalau user gak ngirim page, default ke halaman 1
+		}
+		offset := (page - 1) * filter.Limit
+		query += fmt.Sprintf(" OFFSET $%d", counter)
+		args = append(args, offset)
 		counter++
 	}
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query transactions: %w", err)
+		return nil, 0, fmt.Errorf("failed to query transactions: %w", err)
 	}
 	defer rows.Close()
 
@@ -103,7 +127,7 @@ func (r *TransactionRepo) Search(ctx context.Context, filter transaction.FilterT
 			&createdAt,
 			&updatedAt,
 		); err != nil {
-			return nil, fmt.Errorf("failed to scan transaction row: %w", err)
+			return nil, 0, fmt.Errorf("failed to scan transaction row: %w", err)
 		}
 
 		var finalGoalID *transaction.GoalID
@@ -128,10 +152,10 @@ func (r *TransactionRepo) Search(ctx context.Context, filter transaction.FilterT
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating transaction rows: %w", err)
+		return nil, 0, fmt.Errorf("error iterating transaction rows: %w", err)
 	}
 
-	return transactions, nil
+	return transactions, totalData, nil
 }
 
 func (r *TransactionRepo) SearchByID(ctx context.Context, trxID transaction.TransactionID, userId transaction.UserID) (*transaction.Transaction, error) {
@@ -373,12 +397,65 @@ func (r *TransactionRepo) Save(ctx context.Context, trx *transaction.Transaction
 			return fmt.Errorf("failed to update saving goal amount: %w", err)
 		}
 
+		//BREADCRUMS = NEXT DAY NGE REFACTOR SI CREATE TRX BUAT NGE AFFECT BUDGET DAN WALLETS, KARENA INI BARU SAVING GOALS DOANG YANG KE AFFECT, INI TERMASUK UPDATE DAN DELETE
+
 		rowsAffected, err := res.RowsAffected()
 		if err != nil {
 			return fmt.Errorf("failed to check affected rows for saving goal: %w", err)
 		}
 		if rowsAffected == 0 {
 			return errors.New("saving goal not found or does not belong to user")
+		}
+	}
+
+	if trx.CategoryID() != 0 {
+		var delta int64
+		if trx.TransactionType() == transaction.Expense {
+			delta = -int64(trx.Amount())
+		} else {
+			delta = int64(trx.Amount())
+		}
+
+		month := int(trx.UpdatedAt().Month())
+		year := trx.UpdatedAt().Year()
+
+		updateBudgetQuery := `
+			UPDATE budgets
+			SET amount = amount + $1, updated_at = NOW()
+			WHERE user_id = $2 AND category_id = $3 AND month = $4 AND year = $5
+		`
+		_, err := sqlTx.ExecContext(ctx, updateBudgetQuery, delta, trx.UserID(), trx.CategoryID(), month, year)
+		if err != nil {
+			return fmt.Errorf("failed to update budget amount: %w", err)
+		}
+
+		//BREADCRUMS = NEXT DAY NGE REFACTOR SI CREATE TRX BUAT NGE AFFECT BUDGET DAN WALLETS, KARENA INI BARU SAVING GOALS DOANG YANG KE AFFECT, INI TERMASUK UPDATE DAN DELET
+	}
+
+	if trx.WalletID() != 0 {
+		var delta int64
+		if trx.TransactionType() == transaction.Expense {
+			delta = -int64(trx.Amount())
+		} else {
+			delta = int64(trx.Amount())
+		}
+
+		updateWalletQuery := `
+			UPDATE wallets
+			SET balance = balance + $1, updated_at = NOW()
+			WHERE id = $2 AND user_id = $3 
+		`
+		res, err := sqlTx.ExecContext(ctx, updateWalletQuery, delta, trx.WalletID(), trx.UserID())
+		if err != nil {
+			return fmt.Errorf("failed to update wallet amount: %w", err)
+		}
+
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("failed to check affected rows for wallet: %w", err)
+		}
+		if rowsAffected == 0 {
+			return errors.New("wallet not found or does not belong to user")
 		}
 	}
 
@@ -392,19 +469,34 @@ func (r *TransactionRepo) Update(ctx context.Context, trx *transaction.Transacti
 	}
 	defer sqlTx.Rollback()
 
-	getOldQuery := `SELECT user_id, goal_id, amount, transaction_type FROM transactions WHERE id = $1 AND user_id = $2 FOR UPDATE`
+	getOldQuery := `SELECT user_id, goal_id, wallet_id, category_id, amount, transaction_type, updated_at FROM transactions WHERE id = $1 AND user_id = $2 FOR UPDATE`
 	var (
 		oldUserID     uint64
 		oldGoalIDNull sql.NullInt64
+		oldWalletID   uint64
+		oldCategoryID uint64
 		oldAmount     int64
 		oldType       string
+		oldUpdatedAt  time.Time
 	)
-	err = sqlTx.QueryRowContext(ctx, getOldQuery, trx.ID(), userId).Scan(&oldUserID, &oldGoalIDNull, &oldAmount, &oldType)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	err = sqlTx.QueryRowContext(ctx, getOldQuery, trx.ID(), userId).Scan(
+		&oldUserID,
+		&oldGoalIDNull,
+		&oldWalletID,
+		&oldCategoryID,
+		&oldAmount,
+		&oldType,
+		&oldUpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("transaction not found: %w", err)
+		}
 		return fmt.Errorf("failed to fetch old transaction: %w", err)
 	}
 
-	if err == nil && oldGoalIDNull.Valid {
+	// Revert old saving goal
+	if oldGoalIDNull.Valid {
 		var reverseDelta int64
 		if transaction.TransactionType(oldType) == transaction.Expense {
 			reverseDelta = oldAmount
@@ -417,12 +509,74 @@ func (r *TransactionRepo) Update(ctx context.Context, trx *transaction.Transacti
 			SET current_amount = current_amount + $1, updated_at = NOW()
 			WHERE id = $2 AND user_id = $3
 		`
-		_, _ = sqlTx.ExecContext(ctx, reverseGoalQuery, reverseDelta, oldGoalIDNull.Int64, oldUserID)
+		res, err := sqlTx.ExecContext(ctx, reverseGoalQuery, reverseDelta, oldGoalIDNull.Int64, oldUserID)
+		if err != nil {
+			return fmt.Errorf("failed to update saving goal amount during reversal: %w", err)
+		}
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("failed to check affected rows for saving goal reversal: %w", err)
+		}
+		if rowsAffected == 0 {
+			return errors.New("saving goal not found or does not belong to user during reversal")
+		}
 	}
 
-	query := `UPDATE transactions SET user_id = $1, goal_id = $2, amount = $3, category_id = $4, description = $5, transaction_type = $6, wallet_id = $7, transaction_date = $8, updated_at = $9 WHERE id = $10`
+	// Revert old wallet
+	if oldWalletID != 0 {
+		var reverseDelta int64
+		if transaction.TransactionType(oldType) == transaction.Expense {
+			reverseDelta = oldAmount
+		} else {
+			reverseDelta = -oldAmount
+		}
 
-	_, err = sqlTx.ExecContext(ctx, query,
+		updateWalletQuery := `
+			UPDATE wallets
+			SET balance = balance + $1, updated_at = NOW()
+			WHERE id = $2 AND user_id = $3
+		`
+		res, err := sqlTx.ExecContext(ctx, updateWalletQuery, reverseDelta, oldWalletID, oldUserID)
+		if err != nil {
+			return fmt.Errorf("failed to update wallet balance during reversal: %w", err)
+		}
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("failed to check affected rows for wallet reversal: %w", err)
+		}
+		if rowsAffected == 0 {
+			return errors.New("wallet not found or does not belong to user during reversal")
+		}
+	}
+
+	// Revert old budget
+	if oldCategoryID != 0 {
+		var reverseDelta int64
+		if transaction.TransactionType(oldType) == transaction.Expense {
+			reverseDelta = oldAmount
+		} else {
+			reverseDelta = -oldAmount
+		}
+
+		month := int(oldUpdatedAt.Month())
+		year := oldUpdatedAt.Year()
+
+		updateBudgetQuery := `
+			UPDATE budgets
+			SET amount = amount + $1, updated_at = NOW()
+			WHERE user_id = $2 AND category_id = $3 AND month = $4 AND year = $5
+		`
+		_, err := sqlTx.ExecContext(ctx, updateBudgetQuery, reverseDelta, oldUserID, oldCategoryID, month, year)
+		if err != nil {
+			return fmt.Errorf("failed to update budget amount during reversal: %w", err)
+		}
+	}
+
+	// Update transaction record
+	now := time.Now()
+	query := `UPDATE transactions SET user_id = $1, goal_id = $2, amount = $3, category_id = $4, description = $5, transaction_type = $6, wallet_id = $7, transaction_date = $8, updated_at = $9 WHERE id = $10 AND user_id = $11`
+
+	res, err := sqlTx.ExecContext(ctx, query,
 		trx.UserID(),
 		trx.GoalID(),
 		trx.Amount(),
@@ -431,13 +585,22 @@ func (r *TransactionRepo) Update(ctx context.Context, trx *transaction.Transacti
 		trx.TransactionType(),
 		trx.WalletID(),
 		trx.TransactionDate(),
-		time.Now(),
+		now,
 		trx.ID(),
+		userId,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update transaction: %w", err)
 	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check affected rows for transaction update: %w", err)
+	}
+	if rowsAffected == 0 {
+		return errors.New("transaction not found or does not belong to user")
+	}
 
+	// Apply new saving goal
 	if trx.GoalID() != nil {
 		var delta int64
 		if trx.TransactionType() == transaction.Expense {
@@ -464,6 +627,56 @@ func (r *TransactionRepo) Update(ctx context.Context, trx *transaction.Transacti
 		}
 	}
 
+	// Apply new budget
+	if trx.CategoryID() != 0 {
+		var delta int64
+		if trx.TransactionType() == transaction.Expense {
+			delta = -int64(trx.Amount())
+		} else {
+			delta = int64(trx.Amount())
+		}
+
+		month := int(now.Month())
+		year := now.Year()
+
+		updateBudgetQuery := `
+			UPDATE budgets
+			SET amount = amount + $1, updated_at = NOW()
+			WHERE user_id = $2 AND category_id = $3 AND month = $4 AND year = $5
+		`
+		_, err := sqlTx.ExecContext(ctx, updateBudgetQuery, delta, trx.UserID(), trx.CategoryID(), month, year)
+		if err != nil {
+			return fmt.Errorf("failed to update budget amount: %w", err)
+		}
+	}
+
+	// Apply new wallet
+	if trx.WalletID() != 0 {
+		var delta int64
+		if trx.TransactionType() == transaction.Expense {
+			delta = -int64(trx.Amount())
+		} else {
+			delta = int64(trx.Amount())
+		}
+
+		updateWalletQuery := `
+			UPDATE wallets
+			SET balance = balance + $1, updated_at = NOW()
+			WHERE id = $2 AND user_id = $3
+		`
+		res, err := sqlTx.ExecContext(ctx, updateWalletQuery, delta, trx.WalletID(), trx.UserID())
+		if err != nil {
+			return fmt.Errorf("failed to update wallet amount: %w", err)
+		}
+
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("failed to check affected rows for wallet: %w", err)
+		}
+		if rowsAffected == 0 {
+			return errors.New("wallet not found or does not belong to user")
+		}
+	}
 	return sqlTx.Commit()
 }
 
@@ -474,19 +687,34 @@ func (r *TransactionRepo) Delete(ctx context.Context, trxID transaction.Transact
 	}
 	defer sqlTx.Rollback()
 
-	getOldQuery := `SELECT user_id, goal_id, amount, transaction_type FROM transactions WHERE id = $1 AND user_id = $2 FOR UPDATE`
+	getOldQuery := `SELECT user_id, goal_id, wallet_id, category_id, amount, transaction_type, updated_at FROM transactions WHERE id = $1 AND user_id = $2 FOR UPDATE`
 	var (
 		oldUserID     uint64
 		oldGoalIDNull sql.NullInt64
+		oldWalletID   uint64
+		oldCategoryID uint64
 		oldAmount     int64
 		oldType       string
+		oldUpdatedAt  time.Time
 	)
-	err = sqlTx.QueryRowContext(ctx, getOldQuery, trxID, userId).Scan(&oldUserID, &oldGoalIDNull, &oldAmount, &oldType)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	err = sqlTx.QueryRowContext(ctx, getOldQuery, trxID, userId).Scan(
+		&oldUserID,
+		&oldGoalIDNull,
+		&oldWalletID,
+		&oldCategoryID,
+		&oldAmount,
+		&oldType,
+		&oldUpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("transaction not found: %w", err)
+		}
 		return fmt.Errorf("failed to fetch transaction to delete: %w", err)
 	}
 
-	if err == nil && oldGoalIDNull.Valid {
+	// GoalId reversal
+	if oldGoalIDNull.Valid {
 		var reverseDelta int64
 		if transaction.TransactionType(oldType) == transaction.Expense {
 			reverseDelta = oldAmount
@@ -499,13 +727,81 @@ func (r *TransactionRepo) Delete(ctx context.Context, trxID transaction.Transact
 			SET current_amount = current_amount + $1, updated_at = NOW()
 			WHERE id = $2 AND user_id = $3
 		`
-		_, _ = sqlTx.ExecContext(ctx, reverseGoalQuery, reverseDelta, oldGoalIDNull.Int64, oldUserID)
+		res, err := sqlTx.ExecContext(ctx, reverseGoalQuery, reverseDelta, oldGoalIDNull.Int64, oldUserID)
+		if err != nil {
+			return fmt.Errorf("failed to update saving goal amount: %w", err)
+		}
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("failed to check affected rows for saving goal: %w", err)
+		}
+		if rowsAffected == 0 {
+			return errors.New("saving goal not found or does not belong to user")
+		}
 	}
 
-	query := `DELETE FROM transactions WHERE id = $1`
-	_, err = sqlTx.ExecContext(ctx, query, trxID)
+	// Wallet reversal
+	if oldWalletID != 0 {
+		var reverseDelta int64
+		if transaction.TransactionType(oldType) == transaction.Expense {
+			reverseDelta = oldAmount
+		} else {
+			reverseDelta = -oldAmount
+		}
+
+		updateWalletQuery := `
+			UPDATE wallets
+			SET balance = balance + $1, updated_at = NOW()
+			WHERE id = $2 AND user_id = $3
+		`
+		res, err := sqlTx.ExecContext(ctx, updateWalletQuery, reverseDelta, oldWalletID, oldUserID)
+		if err != nil {
+			return fmt.Errorf("failed to update wallet balance: %w", err)
+		}
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("failed to check affected rows for wallet: %w", err)
+		}
+		if rowsAffected == 0 {
+			return errors.New("wallet not found or does not belong to user")
+		}
+	}
+
+	// Budget reversal
+	if oldCategoryID != 0 {
+		var reverseDelta int64
+		if transaction.TransactionType(oldType) == transaction.Expense {
+			reverseDelta = oldAmount
+		} else {
+			reverseDelta = -oldAmount
+		}
+
+		month := int(oldUpdatedAt.Month())
+		year := oldUpdatedAt.Year()
+
+		updateBudgetQuery := `
+			UPDATE budgets
+			SET amount = amount + $1, updated_at = NOW()
+			WHERE user_id = $1 AND category_id = $2 AND month = $3 AND year = $4
+		`
+		_, err := sqlTx.ExecContext(ctx, updateBudgetQuery, reverseDelta, oldUserID, oldCategoryID, month, year)
+		if err != nil {
+			return fmt.Errorf("failed to update budget amount: %w", err)
+		}
+	}
+
+	// Delete transaction
+	deleteQuery := `DELETE FROM transactions WHERE id = $1 AND user_id = $2`
+	res, err := sqlTx.ExecContext(ctx, deleteQuery, trxID, userId)
 	if err != nil {
 		return fmt.Errorf("failed to delete transaction: %w", err)
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check affected rows for transaction deletion: %w", err)
+	}
+	if rowsAffected == 0 {
+		return errors.New("transaction not found or does not belong to user")
 	}
 
 	return sqlTx.Commit()

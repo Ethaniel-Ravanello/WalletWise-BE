@@ -1,4 +1,4 @@
-package saving_goals
+package saving_goal
 
 import (
 	"context"

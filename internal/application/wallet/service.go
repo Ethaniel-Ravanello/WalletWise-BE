@@ -20,7 +20,6 @@ var (
 )
 
 type WalletInput struct {
-	ID         uint64
 	UserID     uint64
 	WalletName string
 	WalletType string
@@ -63,7 +62,6 @@ func (s *Service) CreateWallet(ctx context.Context, input WalletInput) error {
 			return ErrDuplicateWalletName
 		}
 	}
-
 	newWallet, err := wallet.NewWallet(
 		wallet.UserID(input.UserID),
 		input.WalletName,
@@ -82,6 +80,8 @@ func (s *Service) CreateWallet(ctx context.Context, input WalletInput) error {
 	return nil
 }
 
+// NEXT TESTIGN SEMUA WALLET
+
 func (s *Service) SearchAllWallet(ctx context.Context, userID uint64) ([]*wallet.Wallet, error) {
 	allWallets, err := s.repo.SearchAll(ctx, wallet.UserID(userID))
 	if err != nil {
@@ -94,7 +94,7 @@ func (s *Service) SearchAllWallet(ctx context.Context, userID uint64) ([]*wallet
 }
 
 func (s *Service) SearchWalletByID(ctx context.Context, walletID uint64, userId uint64) (*wallet.Wallet, error) {
-	w, err := s.repo.SearchByID(ctx, wallet.WalletID(walletID), wallet.UserID(userId))
+	w, err := s.repo.SearchByID(ctx, wallet.ID(walletID), wallet.UserID(userId))
 	if err != nil {
 		return nil, fmt.Errorf("search wallet by id: %w", err)
 	}
@@ -108,7 +108,7 @@ func (s *Service) UpdateWallet(ctx context.Context, walletUpdate WalletUpdateInp
 
 	walletUpdate.UserID = userId
 
-	existingWallet, err := s.repo.SearchByID(ctx, wallet.WalletID(walletUpdate.ID), wallet.UserID(walletUpdate.UserID))
+	existingWallet, err := s.repo.SearchByID(ctx, wallet.ID(walletUpdate.ID), wallet.UserID(walletUpdate.UserID))
 	if err != nil {
 		return ErrWalletNotFound
 	}
@@ -129,7 +129,7 @@ func (s *Service) UpdateWallet(ctx context.Context, walletUpdate WalletUpdateInp
 	}
 
 	err = existingWallet.UpdateWallet(
-		wallet.WalletID(walletUpdate.ID),
+		wallet.ID(walletUpdate.ID),
 		wallet.UserID(walletUpdate.UserID),
 		walletUpdate.WalletName,
 		walletUpdate.WalletType,
@@ -147,14 +147,14 @@ func (s *Service) UpdateWallet(ctx context.Context, walletUpdate WalletUpdateInp
 	return nil
 }
 
-func (s *Service) DeleteWallet(ctx context.Context, input WalletInput, userId uint64) error {
+func (s *Service) DeleteWallet(ctx context.Context, input WalletUpdateInput, userId uint64) error {
 	if input.UserID != userId {
 		return ErrInvalidUserID
 	}
 
 	input.UserID = userId
 
-	existingWallet, err := s.repo.SearchByID(ctx, wallet.WalletID(input.ID), wallet.UserID(input.UserID))
+	existingWallet, err := s.repo.SearchByID(ctx, wallet.ID(input.ID), wallet.UserID(input.UserID))
 	if err != nil {
 		return ErrWalletNotFound
 	}

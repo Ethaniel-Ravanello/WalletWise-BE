@@ -8,13 +8,14 @@ import (
 type FilterTrx struct {
 	UserID          UserID
 	GoalID          *GoalID
-	Amount          *Money
-	CategoryID      *CategoryID
-	TransactionType *TransactionType
-	WalletID        *WalletID
-	StartDate       *time.Time
-	EndDate         *time.Time
+	Amount          Money
+	CategoryID      CategoryID
+	TransactionType TransactionType
+	WalletID        WalletID
+	StartDate       time.Time
+	EndDate         time.Time
 	Limit           int
+	Page            int
 }
 
 type CategorySpend struct {
@@ -35,7 +36,7 @@ type Repository interface {
 	GetMostSpend(ctx context.Context, userID UserID, month int, year int, limit int) ([]*CategorySpend, error)
 
 	Save(ctx context.Context, tx *Transaction) error
-	Search(ctx context.Context, filter FilterTrx) ([]*Transaction, error)
+	Search(ctx context.Context, filter FilterTrx) ([]*Transaction, int, error)
 	Update(ctx context.Context, tx *Transaction, userId UserID) error
 	Delete(ctx context.Context, id TransactionID, userId UserID) error
 }

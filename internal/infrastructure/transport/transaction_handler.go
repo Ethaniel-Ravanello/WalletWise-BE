@@ -2,6 +2,7 @@ package transport
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -97,28 +98,39 @@ func (h *TransactionHandler) CreateTransaction(w http.ResponseWriter, r *http.Re
 func (h *TransactionHandler) GetTransactions(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	userIDStr := q.Get("user_id")
-	if userIDStr == "" {
-		userIDStr = q.Get("userId")
+	limit := q.Get("limit")
+	intLimit, err := strconv.Atoi(limit)
+	if err != nil {
+		WriteJSON(w, http.StatusBadRequest, "Invalid limit parameter", nil)
+		return
 	}
-	userID, _ := strconv.ParseUint(userIDStr, 10, 64)
-
-	limit, _ := strconv.Atoi(q.Get("limit"))
-	if limit == 0 {
-		limit = 10
+	page := q.Get("limit")
+	intPage, err := strconv.Atoi(page)
+	if err != nil {
+		WriteJSON(w, http.StatusBadRequest, "Invalid limit parameter", nil)
+		return
 	}
 
-	var defaultZero uint64 = 0
-	var defaultStr string = ""
+	if intLimit > 100 {
+		intLimit = 100
+	}
 
-	input := &service.GetTransactionsInput{
-		UserID:          userID,
-		Limit:           limit,
-		GoalID:          &defaultZero,
-		Amount:          &defaultZero,
-		CategoryID:      &defaultZero,
-		WalletID:        &defaultZero,
-		TransactionType: &defaultStr,
+	userIdCtx := r.Context().Value(middleware.UserIdKey)
+	userId, ok := userIdCtx.(uint64)
+	if !ok {
+		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+		return
+	}
+	// NEXT BIKIN UNIT TEST
+	input := service.GetTransactionsInput{
+		UserID:          userId,
+		GoalID:          nil,
+		Amount:          0,
+		CategoryID:      0,
+		WalletID:        0,
+		TransactionType: "",
+		Limit:           intLimit,
+		Page:            intPage,
 	}
 
 	if valStr := q.Get("goal_id"); valStr != "" {
@@ -128,34 +140,34 @@ func (h *TransactionHandler) GetTransactions(w http.ResponseWriter, r *http.Requ
 	}
 	if valStr := q.Get("amount"); valStr != "" {
 		if val, err := strconv.ParseUint(valStr, 10, 64); err == nil {
-			input.Amount = &val
+			input.Amount = val
 		}
 	}
 	if valStr := q.Get("category_id"); valStr != "" {
 		if val, err := strconv.ParseUint(valStr, 10, 64); err == nil {
-			input.CategoryID = &val
+			input.CategoryID = val
 		}
 	}
 	if valStr := q.Get("wallet_id"); valStr != "" {
 		if val, err := strconv.ParseUint(valStr, 10, 64); err == nil {
-			input.WalletID = &val
+			input.WalletID = val
 		}
 	}
 	if trxType := q.Get("transaction_type"); trxType != "" {
-		input.TransactionType = &trxType
+		input.TransactionType = trxType
 	}
 	if startDateStr := q.Get("start_date"); startDateStr != "" {
 		if val, err := time.Parse(time.RFC3339, startDateStr); err == nil {
-			input.StartDate = &val
+			input.StartDate = val
 		}
 	}
 	if endDateStr := q.Get("end_date"); endDateStr != "" {
 		if val, err := time.Parse(time.RFC3339, endDateStr); err == nil {
-			input.EndDate = &val
+			input.EndDate = val
 		}
 	}
 
-	transactions, err := h.svc.GetTransaction(r.Context(), input)
+	transactions, totalData, err := h.svc.GetTransaction(r.Context(), input)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
@@ -166,14 +178,26 @@ func (h *TransactionHandler) GetTransactions(w http.ResponseWriter, r *http.Requ
 		responses = append(responses, toTransactionResponse(tx))
 	}
 
-	WriteJSON(w, http.StatusOK, "Transactions retrieved successfully", responses)
+	totalPages := int(math.Ceil(float64(totalData) / float64(intLimit)))
+	responseData := map[string]interface{}{
+		"data": responses,
+		"meta": map[string]interface{}{
+			"current_page": page,
+			"limit":        intLimit,
+			"total_items":  totalData,
+			"total_pages":  totalPages,
+		},
+	}
+
+	WriteJSON(w, http.StatusOK, "Transactions retrieved successfully", responseData)
 }
 
-func (h *TransactionHandler) GetTransactionById(w http.ResponseWriter, r *http.Request) {
+func (h *TransactionHandler) GetTransactionByID(w http.ResponseWriter, r *http.Request) {
 	userIdCtx := r.Context().Value(middleware.UserIdKey)
 	userId, ok := userIdCtx.(uint64)
 	if !ok {
 		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+		return
 	}
 
 	idStr := r.PathValue("id")
@@ -190,6 +214,10 @@ func (h *TransactionHandler) GetTransactionById(w http.ResponseWriter, r *http.R
 	}
 
 	WriteJSON(w, http.StatusOK, "Transaction retrieved successfully", toTransactionResponse(tx))
+}
+
+func (h *TransactionHandler) GetTransactionById(w http.ResponseWriter, r *http.Request) {
+	h.GetTransactionByID(w, r)
 }
 
 func (h *TransactionHandler) UpdateTransaction(w http.ResponseWriter, r *http.Request) {

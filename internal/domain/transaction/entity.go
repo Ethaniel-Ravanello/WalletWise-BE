@@ -181,4 +181,5 @@ func (t *Transaction) SignedAmount() int64 {
 	}
 	return -int64(t.amount)
 }
-
+func (t *Transaction) CreatedAt() time.Time { return t.createdAt }
+func (t *Transaction) UpdatedAt() time.Time { return t.updatedAt }

@@ -5,12 +5,12 @@ import (
 	"time"
 )
 
-type WalletID uint64
+type ID uint64
 type UserID uint64
 type Balance uint64
 
 type Wallet struct {
-	id         WalletID
+	id         ID
 	userID     UserID
 	walletName string
 	walletType string
@@ -46,7 +46,7 @@ func NewWallet(userID UserID, walletName string, walletType string, balance Bala
 }
 
 func ReconstituteWallet(
-	id WalletID,
+	id ID,
 	userID UserID,
 	walletName string,
 	walletType string,
@@ -65,7 +65,7 @@ func ReconstituteWallet(
 	}
 }
 
-func (w *Wallet) UpdateWallet(id WalletID, userID UserID, walletName string, walletType string, balance Balance, createdAt time.Time, updatedAt time.Time) error {
+func (w *Wallet) UpdateWallet(id ID, userID UserID, walletName string, walletType string, balance Balance, createdAt time.Time, updatedAt time.Time) error {
 	if userID == 0 {
 		return errors.New("user ID is required")
 	}
@@ -91,11 +91,10 @@ func (w *Wallet) UpdateWallet(id WalletID, userID UserID, walletName string, wal
 	return nil
 }
 
-func (w *Wallet) ID() WalletID         { return w.id }
+func (w *Wallet) ID() ID               { return w.id }
 func (w *Wallet) UserID() UserID       { return w.userID }
 func (w *Wallet) Name() string         { return w.walletName }
 func (w *Wallet) WalletType() string   { return w.walletType }
 func (w *Wallet) Balance() Balance     { return w.balance }
 func (w *Wallet) CreatedAt() time.Time { return w.createdAt }
 func (w *Wallet) UpdatedAt() time.Time { return w.updatedAt }
-

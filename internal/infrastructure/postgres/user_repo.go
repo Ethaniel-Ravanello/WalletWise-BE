@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"walletwise/internal/domain/users"
+	"walletwise/internal/domain/user"
 )
 
 type UserRepo struct {
@@ -17,9 +17,9 @@ func NewUserRepo(db *sql.DB) *UserRepo {
 	return &UserRepo{db: db}
 }
 
-var _ users.Repository = (*UserRepo)(nil)
+var _ user.Repository = (*UserRepo)(nil)
 
-func (r *UserRepo) Save(ctx context.Context, u *users.User) error {
+func (r *UserRepo) Save(ctx context.Context, u *user.User) error {
 	query := `INSERT INTO users (username, email, password, monthly_limit, is_active, created_at, updated_at) 
 	          VALUES ($1, $2, $3, $4, $5, $6, $7)`
 
@@ -38,7 +38,7 @@ func (r *UserRepo) Save(ctx context.Context, u *users.User) error {
 	return nil
 }
 
-func (r *UserRepo) FindByID(ctx context.Context, id users.UserID) (*users.User, error) {
+func (r *UserRepo) FindByID(ctx context.Context, id user.UserID) (*user.User, error) {
 	query := `SELECT id, username, email, password, monthly_limit, is_active, created_at, updated_at 
 	          FROM users WHERE id = $1`
 
@@ -70,21 +70,22 @@ func (r *UserRepo) FindByID(ctx context.Context, id users.UserID) (*users.User, 
 		}
 		return nil, fmt.Errorf("failed to find user by id: %w", err)
 	}
-
-	u := users.ReconstituteUser(
-		users.UserID(userID),
+	fmt.Println(userID)
+	u := user.ReconstituteUser(
+		user.UserID(userID),
 		username,
 		email,
 		password,
-		users.MonthlyLimit(monthlyLimit),
+		user.MonthlyLimit(monthlyLimit),
 		isActive,
 		createdAt,
 		updatedAt,
 	)
+	fmt.Println(u)
 	return u, nil
 }
 
-func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*users.User, error) {
+func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*user.User, error) {
 	query := `SELECT id, username, email, password, monthly_limit, is_active, created_at, updated_at 
 	          FROM users WHERE email = $1`
 
@@ -117,12 +118,12 @@ func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*users.User, 
 		return nil, fmt.Errorf("failed to find user by email: %w", err)
 	}
 
-	u := users.ReconstituteUser(
-		users.UserID(userID),
+	u := user.ReconstituteUser(
+		user.UserID(userID),
 		username,
 		emailHolder,
 		password,
-		users.MonthlyLimit(monthlyLimit),
+		user.MonthlyLimit(monthlyLimit),
 		isActive,
 		createdAt,
 		updatedAt,
@@ -130,7 +131,7 @@ func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*users.User, 
 	return u, nil
 }
 
-func (r *UserRepo) Update(ctx context.Context, u *users.User) error {
+func (r *UserRepo) Update(ctx context.Context, u *user.User) error {
 	query := `UPDATE users SET username = $1, email = $2, password = $3, monthly_limit = $4, is_active = $5, updated_at = $6 
 	          WHERE id = $7`
 
@@ -141,7 +142,7 @@ func (r *UserRepo) Update(ctx context.Context, u *users.User) error {
 		u.MonthlyLimit(),
 		u.IsActive(),
 		time.Now(),
-		u.UserID(),
+		u.ID(),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update user: %w", err)
@@ -149,12 +150,13 @@ func (r *UserRepo) Update(ctx context.Context, u *users.User) error {
 	return nil
 }
 
-func (r *UserRepo) Delete(ctx context.Context, u *users.User) error {
+func (r *UserRepo) Delete(ctx context.Context, u *user.User) error {
 	query := `DELETE FROM users WHERE id = $1`
 
-	_, err := r.db.ExecContext(ctx, query, u.UserID())
+	_, err := r.db.ExecContext(ctx, query, u.ID())
 	if err != nil {
 		return fmt.Errorf("failed to delete user: %w", err)
 	}
 	return nil
 }
+

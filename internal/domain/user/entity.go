@@ -1,4 +1,4 @@
-package users
+package user
 
 import (
 	"errors"
@@ -114,6 +114,7 @@ func (u *User) UpdateUser(
 	return nil
 }
 
+func (u *User) ID() UserID                 { return u.id }
 func (u *User) UserID() UserID             { return u.id }
 func (u *User) Username() string           { return u.username }
 func (u *User) Email() string              { return u.email }
@@ -122,4 +123,5 @@ func (u *User) MonthlyLimit() MonthlyLimit { return u.monthlyLimit }
 func (u *User) IsActive() bool             { return u.isActive }
 func (u *User) CreatedAt() time.Time       { return u.createdAt }
 func (u *User) UpdatedAt() time.Time       { return u.updatedAt }
+
 

@@ -54,7 +54,7 @@ func (r *WalletRepo) SearchAll(ctx context.Context, userID wallet.UserID) ([]*wa
 		}
 
 		wlt := wallet.ReconstituteWallet(
-			wallet.WalletID(id),
+			wallet.ID(id),
 			wallet.UserID(dbUserID),
 			name,
 			walletType,
@@ -72,7 +72,7 @@ func (r *WalletRepo) SearchAll(ctx context.Context, userID wallet.UserID) ([]*wa
 	return wallets, nil
 }
 
-func (r *WalletRepo) SearchByID(ctx context.Context, walletID wallet.WalletID, userId wallet.UserID) (*wallet.Wallet, error) {
+func (r *WalletRepo) SearchByID(ctx context.Context, walletID wallet.ID, userId wallet.UserID) (*wallet.Wallet, error) {
 	query := `SELECT id, user_id, name, wallet_type, balance, created_at, updated_at FROM wallets WHERE id = $1 AND user_id = $2`
 
 	var (
@@ -103,7 +103,7 @@ func (r *WalletRepo) SearchByID(ctx context.Context, walletID wallet.WalletID, u
 	}
 
 	wlt := wallet.ReconstituteWallet(
-		wallet.WalletID(id),
+		wallet.ID(id),
 		wallet.UserID(dbUserID),
 		name,
 		walletType,
@@ -195,7 +195,7 @@ func (r *WalletRepo) SearchHighestBalance(ctx context.Context, userID wallet.Use
 	}
 
 	wlt := wallet.ReconstituteWallet(
-		wallet.WalletID(id),
+		wallet.ID(id),
 		wallet.UserID(dbUserID),
 		name,
 		walletType,
@@ -255,7 +255,7 @@ func (r *WalletRepo) SearchMostActive(ctx context.Context, userID wallet.UserID)
 	}
 
 	wlt := wallet.ReconstituteWallet(
-		wallet.WalletID(id),
+		wallet.ID(id),
 		wallet.UserID(dbUserID),
 		name,
 		walletType,

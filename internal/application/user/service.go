@@ -8,7 +8,7 @@ import (
 	"time"
 	"walletwise/pkg/jwt"
 
-	"walletwise/internal/domain/users"
+	"walletwise/internal/domain/user"
 )
 
 type UserInput struct {
@@ -29,25 +29,25 @@ type UserUpdateInput struct {
 }
 
 type Service struct {
-	repo users.Repository
+	repo user.Repository
 }
 
-func NewService(repo users.Repository) *Service {
+func NewService(repo user.Repository) *Service {
 	return &Service{repo: repo}
 }
 
-func (s *Service) CreateUser(ctx context.Context, input UserInput) (*users.User, error) {
+func (s *Service) CreateUser(ctx context.Context, input UserInput) (*user.User, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 
 	if err != nil {
 		return nil, err
 	}
 
-	newUser, err := users.NewUser(
+	newUser, err := user.NewUser(
 		input.Username,
 		input.Email,
 		string(hashedPassword),
-		users.MonthlyLimit(input.MonthlyLimit),
+		user.MonthlyLimit(input.MonthlyLimit),
 		input.IsActive,
 		time.Now(),
 		time.Now(),
@@ -62,27 +62,28 @@ func (s *Service) CreateUser(ctx context.Context, input UserInput) (*users.User,
 	return newUser, nil
 }
 
-func (s *Service) SearchUserById(ctx context.Context, userID uint64) (*users.User, error) {
-	user, err := s.repo.FindByID(ctx, users.UserID(userID))
+func (s *Service) SearchUserById(ctx context.Context, userID uint64) (*user.User, error) {
+	u, err := s.repo.FindByID(ctx, user.UserID(userID))
 	if err != nil {
 		return nil, fmt.Errorf("find user by id: %w", err)
 	}
-	return user, nil
+	fmt.Println("ini service", u)
+	return u, nil
 }
 
-func (s *Service) SearchUserByEmail(ctx context.Context, email string) (*users.User, error) {
-	user, err := s.repo.FindByEmail(ctx, email)
+func (s *Service) SearchUserByEmail(ctx context.Context, email string) (*user.User, error) {
+	u, err := s.repo.FindByEmail(ctx, email)
 	if err != nil {
 		return nil, fmt.Errorf("find user by email: %w", err)
 	}
-	return user, nil
+	return u, nil
 }
 
 func (s *Service) UpdateUser(ctx context.Context, input *UserUpdateInput, userId uint64) error {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if input.ID != userId {
 		return fmt.Errorf("invalid user ID")
 	}
-
 	input.ID = userId
 
 	existingUser, err := s.SearchUserById(ctx, userId)
@@ -93,8 +94,8 @@ func (s *Service) UpdateUser(ctx context.Context, input *UserUpdateInput, userId
 	err = existingUser.UpdateUser(
 		input.Username,
 		input.Email,
-		input.Password,
-		users.MonthlyLimit(input.MonthlyLimit),
+		string(hashedPassword),
+		user.MonthlyLimit(input.MonthlyLimit),
 		input.IsActive,
 	)
 	if err != nil {
@@ -126,20 +127,21 @@ func (s *Service) DeleteUser(ctx context.Context, input UserUpdateInput, userId 
 }
 
 func (s *Service) Login(ctx context.Context, email string, password string) (string, error) {
-	user, err := s.repo.FindByEmail(ctx, email)
+	u, err := s.repo.FindByEmail(ctx, email)
 	if err != nil {
 		return "", fmt.Errorf("Invalid User")
 	}
 
-	err = bcrypt.CompareHashAndPassword([]byte(user.Password()), []byte(password))
+	err = bcrypt.CompareHashAndPassword([]byte(u.Password()), []byte(password))
 	if err != nil {
 		return "", errors.New("invalid email or password")
 	}
 
-	token, err := jwt.GenerateJwtCustomClaims(uint64(user.UserID()))
+	token, err := jwt.GenerateJwtCustomClaims(uint64(u.ID()))
 	if err != nil {
 		return "", fmt.Errorf("failed to generate token: %w", err)
 	}
 	fmt.Println(token)
 	return token, nil
 }
+

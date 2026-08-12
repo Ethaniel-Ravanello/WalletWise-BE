@@ -1,11 +1,12 @@
-package saving_goals
+package saving_goal
 
 import (
 	"errors"
 	"time"
 )
 
-type SavingGoalsID uint64
+type SavingGoalID uint64
+type SavingGoalsID = SavingGoalID
 type UserID uint64
 type TargetAmount int64
 type CurrentAmount int64
@@ -21,8 +22,8 @@ func (s GoalStatus) IsValid() bool {
 	return s == StatusActive || s == StatusCompleted || s == StatusCancelled
 }
 
-type SavingGoals struct {
-	id            SavingGoalsID
+type SavingGoal struct {
+	id            SavingGoalID
 	userID        UserID
 	name          string
 	targetAmount  TargetAmount
@@ -34,7 +35,9 @@ type SavingGoals struct {
 	updatedAt     time.Time
 }
 
-func NewSavingGoals(
+type SavingGoals = SavingGoal
+
+func NewSavingGoal(
 	userID UserID,
 	name string,
 	targetAmount TargetAmount,
@@ -44,7 +47,7 @@ func NewSavingGoals(
 	description string,
 	createdAt time.Time,
 	updatedAt time.Time,
-) (*SavingGoals, error) {
+) (*SavingGoal, error) {
 	if userID == 0 {
 		return nil, errors.New("user ID is required")
 	}
@@ -61,13 +64,13 @@ func NewSavingGoals(
 		return nil, errors.New("invalid goal status")
 	}
 	if createdAt.IsZero() {
-		return nil, errors.New("created_at time is required")
+		createdAt = time.Now()
 	}
 	if updatedAt.IsZero() {
-		return nil, errors.New("updated_at time is required")
+		updatedAt = time.Now()
 	}
 
-	return &SavingGoals{
+	return &SavingGoal{
 		userID:        userID,
 		name:          name,
 		targetAmount:  targetAmount,
@@ -80,8 +83,7 @@ func NewSavingGoals(
 	}, nil
 }
 
-func Reconstitute(
-	id SavingGoalsID,
+func NewSavingGoals(
 	userID UserID,
 	name string,
 	targetAmount TargetAmount,
@@ -91,8 +93,23 @@ func Reconstitute(
 	description string,
 	createdAt time.Time,
 	updatedAt time.Time,
-) *SavingGoals {
-	return &SavingGoals{
+) (*SavingGoal, error) {
+	return NewSavingGoal(userID, name, targetAmount, currentAmount, deadline, status, description, createdAt, updatedAt)
+}
+
+func ReconstituteSavingGoal(
+	id SavingGoalID,
+	userID UserID,
+	name string,
+	targetAmount TargetAmount,
+	currentAmount CurrentAmount,
+	deadline time.Time,
+	status GoalStatus,
+	description string,
+	createdAt time.Time,
+	updatedAt time.Time,
+) *SavingGoal {
+	return &SavingGoal{
 		id:            id,
 		userID:        userID,
 		name:          name,
@@ -106,14 +123,30 @@ func Reconstitute(
 	}
 }
 
-func (s *SavingGoals) ID() SavingGoalsID            { return s.id }
-func (s *SavingGoals) UserID() UserID               { return s.userID }
-func (s *SavingGoals) Name() string                 { return s.name }
-func (s *SavingGoals) TargetAmount() TargetAmount   { return s.targetAmount }
-func (s *SavingGoals) CurrentAmount() CurrentAmount { return s.currentAmount }
-func (s *SavingGoals) Deadline() time.Time          { return s.deadline }
-func (s *SavingGoals) Status() GoalStatus           { return s.status }
-func (s *SavingGoals) Description() string          { return s.description }
-func (s *SavingGoals) CreatedAt() time.Time         { return s.createdAt }
-func (s *SavingGoals) UpdatedAt() time.Time         { return s.updatedAt }
+func Reconstitute(
+	id SavingGoalID,
+	userID UserID,
+	name string,
+	targetAmount TargetAmount,
+	currentAmount CurrentAmount,
+	deadline time.Time,
+	status GoalStatus,
+	description string,
+	createdAt time.Time,
+	updatedAt time.Time,
+) *SavingGoal {
+	return ReconstituteSavingGoal(id, userID, name, targetAmount, currentAmount, deadline, status, description, createdAt, updatedAt)
+}
+
+func (s *SavingGoal) ID() SavingGoalID              { return s.id }
+func (s *SavingGoal) UserID() UserID               { return s.userID }
+func (s *SavingGoal) Name() string                 { return s.name }
+func (s *SavingGoal) TargetAmount() TargetAmount   { return s.targetAmount }
+func (s *SavingGoal) CurrentAmount() CurrentAmount { return s.currentAmount }
+func (s *SavingGoal) Deadline() time.Time          { return s.deadline }
+func (s *SavingGoal) Status() GoalStatus           { return s.status }
+func (s *SavingGoal) Description() string          { return s.description }
+func (s *SavingGoal) CreatedAt() time.Time         { return s.createdAt }
+func (s *SavingGoal) UpdatedAt() time.Time         { return s.updatedAt }
+
 

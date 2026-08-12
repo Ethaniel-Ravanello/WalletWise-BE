@@ -2,6 +2,7 @@ package transport
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -50,6 +51,13 @@ func (h *WalletHandler) CreateWallet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.UserID == 0 {
+		userIdCtx := r.Context().Value(middleware.UserIdKey)
+		if userId, ok := userIdCtx.(uint64); ok {
+			req.UserID = userId
+		}
+	}
+
 	if req.UserID == 0 || req.WalletName == "" || req.WalletType == "" {
 		WriteJSON(w, http.StatusBadRequest, "user_id, wallet_name, and wallet_type are required", nil)
 		return
@@ -60,7 +68,7 @@ func (h *WalletHandler) CreateWallet(w http.ResponseWriter, r *http.Request) {
 		WalletName: req.WalletName,
 		WalletType: req.WalletType,
 	}
-
+	fmt.Println(input)
 	err := h.svc.CreateWallet(r.Context(), input)
 	if err != nil {
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
@@ -79,6 +87,12 @@ func (h *WalletHandler) SearchAllWallets(w http.ResponseWriter, r *http.Request)
 	userIDStr := r.URL.Query().Get("user_id")
 	if userIDStr == "" {
 		userIDStr = r.URL.Query().Get("userId")
+	}
+	if userIDStr == "" {
+		userIdCtx := r.Context().Value(middleware.UserIdKey)
+		if userId, ok := userIdCtx.(uint64); ok && userId > 0 {
+			userIDStr = strconv.FormatUint(userId, 10)
+		}
 	}
 	if userIDStr == "" {
 		WriteJSON(w, http.StatusBadRequest, "user_id is required", nil)
@@ -105,11 +119,16 @@ func (h *WalletHandler) SearchAllWallets(w http.ResponseWriter, r *http.Request)
 	WriteJSON(w, http.StatusOK, "Wallets retrieved successfully", responses)
 }
 
+func (h *WalletHandler) GetWallets(w http.ResponseWriter, r *http.Request) {
+	h.SearchAllWallets(w, r)
+}
+
 func (h *WalletHandler) SearchWalletsByID(w http.ResponseWriter, r *http.Request) {
 	userIdCtx := r.Context().Value(middleware.UserIdKey)
 	userId, ok := userIdCtx.(uint64)
 	if !ok {
-		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+		WriteJSON(w, http.StatusUnauthorized, "Unauthorized: Invalid user session", nil)
+		return
 	}
 
 	idStr := r.PathValue("id")
@@ -133,11 +152,16 @@ func (h *WalletHandler) SearchWalletsByID(w http.ResponseWriter, r *http.Request
 	WriteJSON(w, http.StatusOK, "Wallet retrieved successfully", toWalletResponse(walletData))
 }
 
+func (h *WalletHandler) GetWalletByID(w http.ResponseWriter, r *http.Request) {
+	h.SearchWalletsByID(w, r)
+}
+
 func (h *WalletHandler) UpdateWallet(w http.ResponseWriter, r *http.Request) {
 	userIdCtx := r.Context().Value(middleware.UserIdKey)
 	userId, ok := userIdCtx.(uint64)
 	if !ok {
-		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+		WriteJSON(w, http.StatusUnauthorized, "Unauthorized: Invalid user session", nil)
+		return
 	}
 
 	idStr := r.PathValue("id")
@@ -151,6 +175,10 @@ func (h *WalletHandler) UpdateWallet(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		WriteJSON(w, http.StatusBadRequest, "Invalid request payload", nil)
 		return
+	}
+
+	if req.UserID == 0 {
+		req.UserID = userId
 	}
 
 	input := service.WalletUpdateInput{
@@ -174,7 +202,8 @@ func (h *WalletHandler) DeleteWallet(w http.ResponseWriter, r *http.Request) {
 	userIdCtx := r.Context().Value(middleware.UserIdKey)
 	userId, ok := userIdCtx.(uint64)
 	if !ok {
-		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+		WriteJSON(w, http.StatusUnauthorized, "Unauthorized: Invalid user session", nil)
+		return
 	}
 
 	idStr := r.PathValue("id")
@@ -197,8 +226,11 @@ func (h *WalletHandler) DeleteWallet(w http.ResponseWriter, r *http.Request) {
 			userID, _ = strconv.ParseUint(userIDStr, 10, 64)
 		}
 	}
+	if userID == 0 {
+		userID = userId
+	}
 
-	input := service.WalletInput{
+	input := service.WalletUpdateInput{
 		ID:         id,
 		UserID:     userID,
 		WalletName: req.WalletName,
@@ -219,6 +251,12 @@ func (h *WalletHandler) SearchHighestBalance(w http.ResponseWriter, r *http.Requ
 	userIDStr := r.PathValue("userId")
 	if userIDStr == "" {
 		userIDStr = r.URL.Query().Get("user_id")
+	}
+	if userIDStr == "" {
+		userIdCtx := r.Context().Value(middleware.UserIdKey)
+		if userId, ok := userIdCtx.(uint64); ok && userId > 0 {
+			userIDStr = strconv.FormatUint(userId, 10)
+		}
 	}
 	if userIDStr == "" {
 		WriteJSON(w, http.StatusBadRequest, "User ID is required", nil)
@@ -246,6 +284,12 @@ func (h *WalletHandler) SearchMostActive(w http.ResponseWriter, r *http.Request)
 		userIDStr = r.URL.Query().Get("user_id")
 	}
 	if userIDStr == "" {
+		userIdCtx := r.Context().Value(middleware.UserIdKey)
+		if userId, ok := userIdCtx.(uint64); ok && userId > 0 {
+			userIDStr = strconv.FormatUint(userId, 10)
+		}
+	}
+	if userIDStr == "" {
 		WriteJSON(w, http.StatusBadRequest, "User ID is required", nil)
 		return
 	}
@@ -269,6 +313,12 @@ func (h *WalletHandler) SearchTotalBalance(w http.ResponseWriter, r *http.Reques
 	userIDStr := r.PathValue("userId")
 	if userIDStr == "" {
 		userIDStr = r.URL.Query().Get("user_id")
+	}
+	if userIDStr == "" {
+		userIdCtx := r.Context().Value(middleware.UserIdKey)
+		if userId, ok := userIdCtx.(uint64); ok && userId > 0 {
+			userIDStr = strconv.FormatUint(userId, 10)
+		}
 	}
 	if userIDStr == "" {
 		WriteJSON(w, http.StatusBadRequest, "User ID is required", nil)

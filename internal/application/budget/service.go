@@ -26,7 +26,6 @@ type BudgetUpdateInput struct {
 }
 
 type BudgetDetailResponse struct {
-	ID            uint64 `json:"id"`
 	UserID        uint64 `json:"user_id"`
 	CategoryID    uint64 `json:"category_id"`
 	Month         int    `json:"month"`
@@ -72,7 +71,8 @@ func (s *Service) CreateBudget(ctx context.Context, input BudgetInput) (*BudgetD
 		return nil, fmt.Errorf("create budget entity: %w", err)
 	}
 
-	if _, err := s.repo.Save(ctx, newBudget); err != nil {
+	_, err = s.repo.Save(ctx, newBudget)
+	if err != nil {
 		return nil, fmt.Errorf("save budget: %w", err)
 	}
 
@@ -174,7 +174,6 @@ func (s *Service) DeleteBudget(ctx context.Context, id uint64, userId uint64) er
 
 func buildBudgetDetailResponse(b *budget.Budget, totalSpent int64) *BudgetDetailResponse {
 	return &BudgetDetailResponse{
-		ID:            uint64(b.ID()),
 		UserID:        uint64(b.UserID()),
 		CategoryID:    uint64(b.CategoryID()),
 		Month:         b.Month(),
