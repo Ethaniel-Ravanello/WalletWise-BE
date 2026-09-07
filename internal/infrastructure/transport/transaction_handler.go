@@ -445,3 +445,5 @@ func toTransactionResponse(tx *transaction.Transaction) TransactionResponse {
 		TransactionDate: tx.TransactionDate(),
 	}
 }
+
+//Next Implement Logger
