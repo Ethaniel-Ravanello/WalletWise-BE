@@ -1,9 +1,9 @@
 package main
 
 import (
-	"log"
 	"net/http"
 	"walletwise/internal/middleware"
+	"walletwise/pkg/logger"
 
 	budgetService "walletwise/internal/application/budget"
 	categoryService "walletwise/internal/application/category"
@@ -13,19 +13,23 @@ import (
 	walletService "walletwise/internal/application/wallet"
 	"walletwise/internal/infrastructure/postgres"
 	"walletwise/internal/infrastructure/transport"
+
+	"go.uber.org/zap"
 )
 
 func main() {
 
+	logger.InitLogger()
+	defer zap.L().Sync()
+
 	db, err := postgres.InitDatabase()
 	if err != nil {
-
-		log.Fatalf("Gagal menyalakan database: %v", err)
+		zap.L().Fatal("failed to connect to database", zap.Error(err))
 	}
 	defer db.Close()
 
 	if err := postgres.RunMigrations(db); err != nil {
-		log.Fatalf("Database Migration Error: %v", err)
+		zap.L().Fatal("failed to run migration", zap.Error(err))
 	}
 
 	trxRepo := postgres.NewTransactionRepo(db)
@@ -99,10 +103,9 @@ func main() {
 	mux.Handle("DELETE /budgets/{id}", middleware.AuthMiddleware(http.HandlerFunc(budgetHandler.DeleteBudget)))
 
 	port := ":8080"
-	log.Println("🚀 Server WalletWise menyala dan mendengarkan di port", port)
+	zap.L().Info("🚀 Server WalletWise menyala dan mendengarkan di port", zap.String("Port", port))
 
 	if err := http.ListenAndServe(port, mux); err != nil {
-		log.Fatalf("Server mati secara tidak wajar: %v", err)
+		zap.L().Fatal("Server mati secara tidak wajar: %v", zap.Error(err))
 	}
 }
-

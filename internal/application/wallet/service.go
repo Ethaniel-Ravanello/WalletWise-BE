@@ -80,8 +80,6 @@ func (s *Service) CreateWallet(ctx context.Context, input WalletInput) error {
 	return nil
 }
 
-// NEXT TESTIGN SEMUA WALLET
-
 func (s *Service) SearchAllWallet(ctx context.Context, userID uint64) ([]*wallet.Wallet, error) {
 	allWallets, err := s.repo.SearchAll(ctx, wallet.UserID(userID))
 	if err != nil {
