@@ -3,11 +3,11 @@ package postgres
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
 	_ "github.com/lib/pq"
+	"go.uber.org/zap"
 )
 
 func InitDatabase() (*sql.DB, error) {
@@ -31,10 +31,12 @@ func InitDatabase() (*sql.DB, error) {
 
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
+		zap.L().Error("Failed to connect to database", zap.Error(err))
 		return nil, fmt.Errorf("failed to open db: %w", err)
 	}
 
 	if err := db.Ping(); err != nil {
+		zap.L().Error("Failed to ping database", zap.Error(err))
 		return nil, fmt.Errorf("failed to ping db: %w", err)
 	}
 
@@ -48,14 +50,16 @@ func InitDatabase() (*sql.DB, error) {
 func RunMigrations(db *sql.DB) error {
 	sqlBytes, err := os.ReadFile("migration/migration.sql")
 	if err != nil {
+		zap.L().Error("Failed to read migration file", zap.Error(err))
 		return fmt.Errorf("failed to read migration file: %w", err)
 	}
 
 	_, err = db.Exec(string(sqlBytes))
 	if err != nil {
+		zap.L().Error("Failed to execute migration script", zap.Error(err))
 		return fmt.Errorf("failed to execute migration script: %w", err)
 	}
 
-	log.Println("Database migrations executed successfully")
+	zap.L().Info("Database migrations executed successfully")
 	return nil
 }

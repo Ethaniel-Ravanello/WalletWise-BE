@@ -7,15 +7,20 @@ import (
 	"fmt"
 	"time"
 
+	"go.uber.org/zap"
 	"walletwise/internal/domain/saving_goal"
 )
 
 type SavingGoalsRepo struct {
-	db *sql.DB
+	db     *sql.DB
+	logger *zap.Logger
 }
 
 func NewSavingGoalsRepo(db *sql.DB) *SavingGoalsRepo {
-	return &SavingGoalsRepo{db: db}
+	return &SavingGoalsRepo{
+		db:     db,
+		logger: zap.L(),
+	}
 }
 
 var _ saving_goal.Repository = (*SavingGoalsRepo)(nil)
@@ -36,6 +41,10 @@ func (r *SavingGoalsRepo) Save(ctx context.Context, sg *saving_goal.SavingGoal) 
 		time.Now(),
 	)
 	if err != nil {
+		r.logger.Error("Failed to save saving goal",
+			zap.Error(err),
+			zap.Int("UserId", int(sg.UserID())),
+			zap.String("Name", sg.Name()))
 		return fmt.Errorf("failed to save saving goal: %w", err)
 	}
 	return nil
@@ -48,6 +57,9 @@ func (r *SavingGoalsRepo) SearchAll(ctx context.Context, userID saving_goal.User
 
 	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
+		r.logger.Error("Failed to query saving goals",
+			zap.Error(err),
+			zap.Int("UserId", int(userID)))
 		return nil, fmt.Errorf("failed to query saving goals: %w", err)
 	}
 	defer rows.Close()
@@ -79,6 +91,9 @@ func (r *SavingGoalsRepo) SearchAll(ctx context.Context, userID saving_goal.User
 			&createdAt,
 			&updatedAt,
 		); err != nil {
+			r.logger.Error("Failed to scan saving goal row",
+				zap.Error(err),
+				zap.Int("UserId", int(userID)))
 			return nil, fmt.Errorf("failed to scan saving goal row: %w", err)
 		}
 
@@ -98,6 +113,9 @@ func (r *SavingGoalsRepo) SearchAll(ctx context.Context, userID saving_goal.User
 	}
 
 	if err := rows.Err(); err != nil {
+		r.logger.Error("Error iterating saving goal rows",
+			zap.Error(err),
+			zap.Int("UserId", int(userID)))
 		return nil, fmt.Errorf("error iterating saving goal rows: %w", err)
 	}
 
@@ -108,7 +126,7 @@ func (r *SavingGoalsRepo) Update(ctx context.Context, sg *saving_goal.SavingGoal
 	query := `UPDATE saving_goals 
 	          SET user_id = $1, name = $2, target_amount = $3, current_amount = $4, deadline = $5, status = $6, description = $7, created_at = $8, updated_at = $9 
 	          WHERE id = $10 AND user_id = $11`
-	fmt.Println(sg.ID())
+
 	result, err := r.db.ExecContext(ctx, query,
 		sg.UserID(),
 		sg.Name(),
@@ -123,14 +141,25 @@ func (r *SavingGoalsRepo) Update(ctx context.Context, sg *saving_goal.SavingGoal
 		userId,
 	)
 	if err != nil {
+		r.logger.Error("Failed to update saving goal",
+			zap.Error(err),
+			zap.Int("ID", int(sg.ID())),
+			zap.Int("UserId", int(userId)))
 		return fmt.Errorf("failed to update saving goal: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
+		r.logger.Error("Failed to check rows affected",
+			zap.Error(err),
+			zap.Int("ID", int(sg.ID())),
+			zap.Int("UserId", int(userId)))
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 	if rowsAffected == 0 {
+		r.logger.Warn("No saving goal updated, id might not exist or unauthorized",
+			zap.Int("ID", int(sg.ID())),
+			zap.Int("UserId", int(userId)))
 		return errors.New("saving goal not found or you don't have permission to update it")
 	}
 
@@ -142,6 +171,10 @@ func (r *SavingGoalsRepo) Delete(ctx context.Context, id saving_goal.SavingGoalI
 
 	_, err := r.db.ExecContext(ctx, query, id, userId)
 	if err != nil {
+		r.logger.Error("Failed to delete saving goal",
+			zap.Error(err),
+			zap.Int("ID", int(id)),
+			zap.Int("UserId", int(userId)))
 		return fmt.Errorf("failed to delete saving goal: %w", err)
 	}
 	return nil
@@ -179,8 +212,16 @@ func (r *SavingGoalsRepo) SearchByID(ctx context.Context, id saving_goal.SavingG
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			r.logger.Warn("Saving goal not found",
+				zap.Error(err),
+				zap.Int("ID", int(id)),
+				zap.Int("UserId", int(userID)))
 			return nil, fmt.Errorf("saving goal not found: %w", err)
 		}
+		r.logger.Error("Failed to find saving goal by id",
+			zap.Error(err),
+			zap.Int("ID", int(id)),
+			zap.Int("UserId", int(userID)))
 		return nil, fmt.Errorf("failed to find saving goal by id: %w", err)
 	}
 
@@ -206,6 +247,10 @@ func (r *SavingGoalsRepo) SearchByStatus(ctx context.Context, userID saving_goal
 
 	rows, err := r.db.QueryContext(ctx, query, status, userID)
 	if err != nil {
+		r.logger.Error("Failed to query saving goals by status",
+			zap.Error(err),
+			zap.Int("UserId", int(userID)),
+			zap.String("Status", string(status)))
 		return nil, fmt.Errorf("failed to query saving goals by status: %w", err)
 	}
 	defer rows.Close()
@@ -237,6 +282,9 @@ func (r *SavingGoalsRepo) SearchByStatus(ctx context.Context, userID saving_goal
 			&createdAt,
 			&updatedAt,
 		); err != nil {
+			r.logger.Error("Failed to scan saving goal row",
+				zap.Error(err),
+				zap.Int("UserId", int(userID)))
 			return nil, fmt.Errorf("failed to scan saving goal row: %w", err)
 		}
 
@@ -256,6 +304,9 @@ func (r *SavingGoalsRepo) SearchByStatus(ctx context.Context, userID saving_goal
 	}
 
 	if err := rows.Err(); err != nil {
+		r.logger.Error("Error iterating saving goal rows",
+			zap.Error(err),
+			zap.Int("UserId", int(userID)))
 		return nil, fmt.Errorf("error iterating saving goal rows: %w", err)
 	}
 
@@ -271,8 +322,12 @@ func (r *SavingGoalsRepo) UpdateAmount(ctx context.Context, tx *sql.Tx, id savin
 
 	_, err := tx.ExecContext(ctx, query, amount, id, userId)
 	if err != nil {
+		r.logger.Error("Failed to update saving goal amount",
+			zap.Error(err),
+			zap.Int("ID", int(id)),
+			zap.Int("UserId", int(userId)),
+			zap.Int64("Amount", amount))
 		return fmt.Errorf("failed to update saving goal amount: %w", err)
 	}
 	return nil
 }
-

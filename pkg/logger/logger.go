@@ -16,4 +16,5 @@ func InitLogger() error {
 	}
 
 	zap.ReplaceGlobals(logger)
+	return nil
 }

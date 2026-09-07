@@ -18,7 +18,10 @@ type BudgetRepo struct {
 }
 
 func NewBudgetRepo(db *sql.DB) *BudgetRepo {
-	return &BudgetRepo{db: db}
+	return &BudgetRepo{
+		db:     db,
+		logger: zap.L(),
+	}
 }
 
 var _ budget.Repository = (*BudgetRepo)(nil)
@@ -37,10 +40,13 @@ func (r *BudgetRepo) CalculateTotalSpent(ctx context.Context, userID budget.User
 	var totalSpent int64
 	err := r.db.QueryRowContext(ctx, query, userID, categoryID, month, year).Scan(&totalSpent)
 	if err != nil {
-		r.logger.Error("Failed To Execute Query",
+		r.logger.Error("Failed to calculate total spent",
 			zap.Error(err),
-			zap.Int("UserId", int(userID)))
-		return -0, err
+			zap.Int("UserId", int(userID)),
+			zap.Int("CategoryId", int(categoryID)),
+			zap.Int("Month", month),
+			zap.Int("Year", year))
+		return 0, fmt.Errorf("failed to calculate total spent: %w", err)
 	}
 
 	return totalSpent, nil
@@ -65,9 +71,12 @@ func (r *BudgetRepo) Save(ctx context.Context, b *budget.Budget) (budget.BudgetI
 	).Scan(&budgetID)
 
 	if err != nil {
-		r.logger.Error("Failed To Execute Query",
+		r.logger.Error("Failed to save budget",
 			zap.Error(err),
-			zap.Int("UserId", int(b.UserID())))
+			zap.Int("UserId", int(b.UserID())),
+			zap.Int("CategoryId", int(b.CategoryID())),
+			zap.Int("Month", b.Month()),
+			zap.Int("Year", b.Year()))
 		return 0, fmt.Errorf("failed to save budget: %w", err)
 	}
 	return budget.BudgetID(budgetID), nil
@@ -95,13 +104,15 @@ func (r *BudgetRepo) FindByID(ctx context.Context, id budget.BudgetID, userId bu
 	err := row.Scan(&dbID, &dbUserID, &dbCategoryID, &dbMonth, &dbYear, &dbAmount, &dbCreatedAt, &dbUpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			r.logger.Error("Budget Not Found",
+			r.logger.Warn("Budget not found",
 				zap.Error(err),
+				zap.Int("ID", int(id)),
 				zap.Int("UserId", int(userId)))
 			return nil, errors.New("budget not found")
 		}
-		r.logger.Error("Budget Not Found By Id",
+		r.logger.Error("Failed to find budget by id",
 			zap.Error(err),
+			zap.Int("ID", int(id)),
 			zap.Int("UserId", int(userId)))
 		return nil, fmt.Errorf("failed to find budget by id: %w", err)
 	}
@@ -127,9 +138,11 @@ func (r *BudgetRepo) FindByUserAndMonth(ctx context.Context, userID budget.UserI
 
 	rows, err := r.db.QueryContext(ctx, query, userID, month, year)
 	if err != nil {
-		r.logger.Error("Failed To Execute Query",
+		r.logger.Error("Failed to query budgets by month",
 			zap.Error(err),
-			zap.Int("UserId", int(userID)))
+			zap.Int("UserId", int(userID)),
+			zap.Int("Month", month),
+			zap.Int("Year", year))
 		return nil, fmt.Errorf("failed to query budgets by month: %w", err)
 	}
 	defer rows.Close()
@@ -148,7 +161,7 @@ func (r *BudgetRepo) FindByUserAndMonth(ctx context.Context, userID budget.UserI
 		)
 
 		if err := rows.Scan(&dbID, &dbUserID, &dbCategoryID, &dbMonth, &dbYear, &dbAmount, &dbCreatedAt, &dbUpdatedAt); err != nil {
-			r.logger.Error("Failed To Scan Budget Row",
+			r.logger.Error("Failed to scan budget row",
 				zap.Error(err),
 				zap.Int("UserId", int(userID)))
 			return nil, fmt.Errorf("failed to scan budget row: %w", err)
@@ -168,7 +181,7 @@ func (r *BudgetRepo) FindByUserAndMonth(ctx context.Context, userID budget.UserI
 	}
 
 	if err := rows.Err(); err != nil {
-		r.logger.Error("Error Iterating Budget Row",
+		r.logger.Error("Error iterating budget rows",
 			zap.Error(err),
 			zap.Int("UserId", int(userID)))
 		return nil, fmt.Errorf("error iterating budget rows: %w", err)
@@ -199,14 +212,20 @@ func (r *BudgetRepo) FindByUserAndCategory(ctx context.Context, userID budget.Us
 	err := row.Scan(&dbID, &dbUserID, &dbCategoryID, &dbMonth, &dbYear, &dbAmount, &dbCreatedAt, &dbUpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			r.logger.Error("Budget Not Found In This Category and Month",
+			r.logger.Warn("Budget not found for this category and month",
 				zap.Error(err),
-				zap.Int("UserId", int(userID)))
+				zap.Int("UserId", int(userID)),
+				zap.Int("CategoryId", int(categoryID)),
+				zap.Int("Month", month),
+				zap.Int("Year", year))
 			return nil, errors.New("budget not found for this category and month")
 		}
-		r.logger.Error("Failed To Find Budget By User and Category",
+		r.logger.Error("Failed to find budget by user and category",
 			zap.Error(err),
-			zap.Int("UserId", int(userID)))
+			zap.Int("UserId", int(userID)),
+			zap.Int("CategoryId", int(categoryID)),
+			zap.Int("Month", month),
+			zap.Int("Year", year))
 		return nil, fmt.Errorf("failed to find budget by user and category: %w", err)
 	}
 
@@ -240,22 +259,24 @@ func (r *BudgetRepo) Update(ctx context.Context, b *budget.Budget) error {
 		b.UserID(),
 	)
 	if err != nil {
-		r.logger.Error("Failed To Execute Query",
+		r.logger.Error("Failed to update budget",
 			zap.Error(err),
+			zap.Int("ID", int(b.ID())),
 			zap.Int("UserId", int(b.UserID())))
 		return fmt.Errorf("failed to update budget: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		r.logger.Error("Failed To Check Row Affected",
+		r.logger.Error("Failed to check rows affected",
 			zap.Error(err),
+			zap.Int("ID", int(b.ID())),
 			zap.Int("UserId", int(b.UserID())))
 		return fmt.Errorf("failed to check rows affected: %w", err)
 	}
 	if rowsAffected == 0 {
-		r.logger.Error("No Budget Updated",
-			zap.Error(err),
+		r.logger.Warn("No budget updated, id might not exist",
+			zap.Int("ID", int(b.ID())),
 			zap.Int("UserId", int(b.UserID())))
 		return errors.New("no budget updated, id might not exist")
 	}
@@ -271,26 +292,25 @@ func (r *BudgetRepo) Delete(ctx context.Context, id budget.BudgetID, userId budg
 
 	result, err := r.db.ExecContext(ctx, query, id, userId)
 	if err != nil {
-		r.logger.Error("Failed To Delete Budget",
+		r.logger.Error("Failed to delete budget",
 			zap.Error(err),
-			zap.Int("UserId", int(userId)),
-			zap.Int("ID", int(id)))
+			zap.Int("ID", int(id)),
+			zap.Int("UserId", int(userId)))
 		return fmt.Errorf("failed to delete budget: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		r.logger.Error("failed to check rows affected",
+		r.logger.Error("Failed to check rows affected",
 			zap.Error(err),
-			zap.Int("UserId", int(userId)),
-			zap.Int("ID", int(id)))
+			zap.Int("ID", int(id)),
+			zap.Int("UserId", int(userId)))
 		return fmt.Errorf("failed to check rows affected: %w", err)
 	}
 	if rowsAffected == 0 {
-		r.logger.Error("no budget deleted",
-			zap.Error(err),
-			zap.Int("UserId", int(userId)),
-			zap.Int("ID", int(id)))
+		r.logger.Warn("No budget deleted, id might not exist",
+			zap.Int("ID", int(id)),
+			zap.Int("UserId", int(userId)))
 		return errors.New("no budget deleted, id might not exist")
 	}
 

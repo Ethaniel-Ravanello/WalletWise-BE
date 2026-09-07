@@ -106,6 +106,6 @@ func main() {
 	zap.L().Info("🚀 Server WalletWise menyala dan mendengarkan di port", zap.String("Port", port))
 
 	if err := http.ListenAndServe(port, mux); err != nil {
-		zap.L().Fatal("Server mati secara tidak wajar: %v", zap.Error(err))
+		zap.L().Fatal("Server mati secara tidak wajar", zap.Error(err))
 	}
 }
