@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"go.uber.org/zap"
 	"strings"
 	"time"
 
@@ -12,7 +13,8 @@ import (
 )
 
 type TransactionRepo struct {
-	db *sql.DB
+	db     *sql.DB
+	logger *zap.Logger
 }
 
 func NewTransactionRepo(db *sql.DB) *TransactionRepo {
@@ -24,6 +26,7 @@ var _ transaction.Repository = (*TransactionRepo)(nil)
 func (r *TransactionRepo) Search(ctx context.Context, filter transaction.FilterTrx) ([]*transaction.Transaction, int, error) {
 	counter := 1
 	query := fmt.Sprintf("SELECT id, user_id, goal_id, category_id, amount, description, transaction_type, wallet_id, transaction_date, created_at, updated_at FROM transactions WHERE user_id = $%d", counter)
+
 	args := []interface{}{filter.UserID}
 	counter++
 
@@ -65,9 +68,17 @@ func (r *TransactionRepo) Search(ctx context.Context, filter transaction.FilterT
 
 	countQuery := strings.Replace(query, "SELECT id, user_id, goal_id, category_id, amount, description, transaction_type, wallet_id, transaction_date, created_at, updated_at", "SELECT COUNT(id)", 1)
 
+	r.logger.Debug("Search Count query", zap.String("Count Query", countQuery))
+	r.logger.Debug("Search query", zap.String("query", query))
+
 	var totalData int
 	// Eksekusi khusus untuk hitung jumlah
 	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&totalData); err != nil {
+		r.logger.Error("Failed to Execute Count Query",
+			zap.Error(err),
+			zap.Int("UserId", int(filter.UserID)),
+			zap.String("Test", string(filter.TransactionType)),
+			zap.String("StartDate", filter.StartDate.Format(time.RFC3339)))
 		return nil, 0, fmt.Errorf("failed to count total transactions: %w", err)
 	}
 
@@ -94,6 +105,11 @@ func (r *TransactionRepo) Search(ctx context.Context, filter transaction.FilterT
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
+		r.logger.Error("Failed to Execute Query",
+			zap.Error(err),
+			zap.Int("UserId", int(filter.UserID)),
+			zap.String("Test", string(filter.TransactionType)),
+			zap.String("StartDate", filter.StartDate.Format(time.RFC3339)))
 		return nil, 0, fmt.Errorf("failed to query transactions: %w", err)
 	}
 	defer rows.Close()
@@ -127,6 +143,11 @@ func (r *TransactionRepo) Search(ctx context.Context, filter transaction.FilterT
 			&createdAt,
 			&updatedAt,
 		); err != nil {
+			r.logger.Error("Failed to Scan Transaction Row",
+				zap.Error(err),
+				zap.Int("UserId", int(filter.UserID)),
+				zap.String("Test", string(filter.TransactionType)),
+				zap.String("StartDate", filter.StartDate.Format(time.RFC3339)))
 			return nil, 0, fmt.Errorf("failed to scan transaction row: %w", err)
 		}
 
@@ -152,6 +173,11 @@ func (r *TransactionRepo) Search(ctx context.Context, filter transaction.FilterT
 	}
 
 	if err := rows.Err(); err != nil {
+		r.logger.Error("Failed to Iterate Transaction Rows",
+			zap.Error(err),
+			zap.Int("UserId", int(filter.UserID)),
+			zap.String("Test", string(filter.TransactionType)),
+			zap.String("StartDate", filter.StartDate.Format(time.RFC3339)))
 		return nil, 0, fmt.Errorf("error iterating transaction rows: %w", err)
 	}
 
@@ -161,7 +187,7 @@ func (r *TransactionRepo) Search(ctx context.Context, filter transaction.FilterT
 func (r *TransactionRepo) SearchByID(ctx context.Context, trxID transaction.TransactionID, userId transaction.UserID) (*transaction.Transaction, error) {
 	query := `SELECT id, user_id, goal_id, category_id, amount, description, transaction_type, wallet_id, transaction_date, created_at, updated_at 
 	          FROM transactions WHERE id = $1 AND user_id = $2`
-
+	r.logger.Debug("Query", zap.String("Query", query))
 	var (
 		id              uint64
 		userID          uint64
@@ -192,8 +218,13 @@ func (r *TransactionRepo) SearchByID(ctx context.Context, trxID transaction.Tran
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			r.logger.Error("Transaction Not Found")
 			return nil, fmt.Errorf("transaction not found: %w", err)
 		}
+		r.logger.Error("Failed to Find Transaction Row",
+			zap.Error(err),
+			zap.Int("UserId", int(userId)),
+			zap.Int("Test", int(trxID)))
 		return nil, fmt.Errorf("failed to find transaction by id: %w", err)
 	}
 
@@ -228,6 +259,10 @@ func (r *TransactionRepo) GetBalance(ctx context.Context, userID transaction.Use
 	var amount transaction.Money
 	err := r.db.QueryRowContext(ctx, query, userID, walletID).Scan(&amount)
 	if err != nil {
+		r.logger.Error("Failed to Get Balance",
+			zap.Error(err),
+			zap.Int("UserId", int(userID)),
+			zap.Int("Test", int(walletID)))
 		return 0, fmt.Errorf("failed to get balance: %w", err)
 	}
 	return amount, nil
@@ -245,6 +280,11 @@ func (r *TransactionRepo) GetMonthlySummary(ctx context.Context, userID transact
 	var totalIncome, totalExpense transaction.Money
 	err := r.db.QueryRowContext(ctx, query, userID, month, year).Scan(&totalIncome, &totalExpense)
 	if err != nil {
+		r.logger.Error("Failed to Find Transaction Row",
+			zap.Error(err),
+			zap.Int("UserId", int(userID)),
+			zap.Int("Month", month),
+			zap.Int("Year", year))
 		return transaction.MonthlySummary{}, fmt.Errorf("failed to get monthly summary: %w", err)
 	}
 	return transaction.MonthlySummary{
@@ -293,8 +333,20 @@ func (r *TransactionRepo) GetHighestExpense(ctx context.Context, userID transact
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			r.logger.Error("Failed to Find Transaction",
+				zap.Error(err),
+				zap.Int("UserId", int(userID)),
+				zap.Int("Test", month),
+				zap.Int("Year", year),
+				zap.Int("Limit", limit))
 			return nil, fmt.Errorf("transaction not found: %w", err)
 		}
+		r.logger.Error("Failed to Find Highest Expense",
+			zap.Error(err),
+			zap.Int("UserId", int(userID)),
+			zap.Int("Test", month),
+			zap.Int("Year", year),
+			zap.Int("Limit", limit))
 		return nil, fmt.Errorf("failed to get highest expense: %w", err)
 	}
 
@@ -333,6 +385,12 @@ func (r *TransactionRepo) GetMostSpend(ctx context.Context, userID transaction.U
 
 	rows, err := r.db.QueryContext(ctx, query, userID, year, month, limit)
 	if err != nil {
+		r.logger.Error("Failed to Find Highest Expense",
+			zap.Error(err),
+			zap.Int("UserId", int(userID)),
+			zap.Int("Test", month),
+			zap.Int("Year", year),
+			zap.Int("Limit", limit))
 		return nil, fmt.Errorf("failed to get most spend categories: %w", err)
 	}
 	defer rows.Close()
@@ -341,12 +399,24 @@ func (r *TransactionRepo) GetMostSpend(ctx context.Context, userID transaction.U
 	for rows.Next() {
 		var cs transaction.CategorySpend
 		if err := rows.Scan(&cs.Category, &cs.Total); err != nil {
+			r.logger.Error("Failed to Find Highest Expense",
+				zap.Error(err),
+				zap.Int("UserId", int(userID)),
+				zap.Int("Test", month),
+				zap.Int("Year", year),
+				zap.Int("Limit", limit))
 			return nil, fmt.Errorf("failed to scan category spend row: %w", err)
 		}
 		categorySpends = append(categorySpends, &cs)
 	}
 
 	if err := rows.Err(); err != nil {
+		r.logger.Error("Failed to Find Highest Expense",
+			zap.Error(err),
+			zap.Int("UserId", int(userID)),
+			zap.Int("Test", month),
+			zap.Int("Year", year),
+			zap.Int("Limit", limit))
 		return nil, fmt.Errorf("error iterating category spend rows: %w", err)
 	}
 
@@ -356,6 +426,11 @@ func (r *TransactionRepo) GetMostSpend(ctx context.Context, userID transaction.U
 func (r *TransactionRepo) Save(ctx context.Context, trx *transaction.Transaction) error {
 	sqlTx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
+		r.logger.Error("Fatal Error when begin transaction",
+			zap.Error(err),
+			zap.Int("UserId", int(trx.UserID())),
+			zap.Int("Id", int(trx.ID())),
+			zap.Time("CreatedAt", trx.CreatedAt()))
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer sqlTx.Rollback()
@@ -376,6 +451,11 @@ func (r *TransactionRepo) Save(ctx context.Context, trx *transaction.Transaction
 		time.Now(),
 	)
 	if err != nil {
+		r.logger.Error("Fatal To Insert Transaction",
+			zap.Error(err),
+			zap.Int("UserId", int(trx.UserID())),
+			zap.Int("Id", int(trx.ID())),
+			zap.Time("CreatedAt", trx.CreatedAt()))
 		return fmt.Errorf("failed to insert transaction: %w", err)
 	}
 
@@ -394,6 +474,11 @@ func (r *TransactionRepo) Save(ctx context.Context, trx *transaction.Transaction
 		`
 		res, err := sqlTx.ExecContext(ctx, updateGoalQuery, delta, *trx.GoalID(), trx.UserID())
 		if err != nil {
+			r.logger.Error("Fatal Error when begin transaction",
+				zap.Error(err),
+				zap.Int("UserId", int(trx.UserID())),
+				zap.Int("Id", int(trx.ID())),
+				zap.Time("CreatedAt", trx.CreatedAt()))
 			return fmt.Errorf("failed to update saving goal amount: %w", err)
 		}
 
@@ -401,6 +486,11 @@ func (r *TransactionRepo) Save(ctx context.Context, trx *transaction.Transaction
 
 		rowsAffected, err := res.RowsAffected()
 		if err != nil {
+			r.logger.Error("Failed to check affected rows",
+				zap.Error(err),
+				zap.Int("UserId", int(trx.UserID())),
+				zap.Int("Id", int(trx.ID())),
+				zap.Time("CreatedAt", trx.CreatedAt()))
 			return fmt.Errorf("failed to check affected rows for saving goal: %w", err)
 		}
 		if rowsAffected == 0 {
@@ -426,6 +516,11 @@ func (r *TransactionRepo) Save(ctx context.Context, trx *transaction.Transaction
 		`
 		_, err := sqlTx.ExecContext(ctx, updateBudgetQuery, delta, trx.UserID(), trx.CategoryID(), month, year)
 		if err != nil {
+			r.logger.Error("Fatal Error when begin transaction",
+				zap.Error(err),
+				zap.Int("UserId", int(trx.UserID())),
+				zap.Int("Id", int(trx.ID())),
+				zap.Time("CreatedAt", trx.CreatedAt()))
 			return fmt.Errorf("failed to update budget amount: %w", err)
 		}
 
