@@ -3,6 +3,8 @@ package transport
 import (
 	"encoding/json"
 	"net/http"
+
+	"go.uber.org/zap"
 )
 
 type WebResponse struct {
@@ -22,5 +24,7 @@ func WriteJSON(w http.ResponseWriter, code int, message string, data interface{}
 		Data:    data,
 	}
 
-	_ = json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		zap.L().Error("Failed to encode JSON response", zap.Error(err), zap.Int("code", code))
+	}
 }

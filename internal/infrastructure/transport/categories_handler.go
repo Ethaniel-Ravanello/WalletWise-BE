@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"time"
 
+	"go.uber.org/zap"
+
 	service "walletwise/internal/application/category"
 	"walletwise/internal/domain/category"
 )
@@ -17,18 +19,25 @@ type CategoryResponse struct {
 }
 
 type CategoryHandler struct {
-	svc *service.Service
+	svc    *service.Service
+	logger *zap.Logger
 }
 
 type CategoriesHandler = CategoryHandler
 
 func NewCategoryHandler(svc *service.Service) *CategoryHandler {
-	return &CategoryHandler{svc: svc}
+	return &CategoryHandler{
+		svc:    svc,
+		logger: zap.L(),
+	}
 }
 
 func (h *CategoryHandler) GetAllCategories(w http.ResponseWriter, r *http.Request) {
+	h.logger.Debug("Fetching all categories")
+
 	categoriesList, err := h.svc.GetAllCategories(r.Context())
 	if err != nil {
+		h.logger.Error("Failed to get categories", zap.Error(err))
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
@@ -38,6 +47,7 @@ func (h *CategoryHandler) GetAllCategories(w http.ResponseWriter, r *http.Reques
 		responses = append(responses, toCategoryResponse(cat))
 	}
 
+	h.logger.Debug("Categories retrieved successfully", zap.Int("count", len(responses)))
 	WriteJSON(w, http.StatusOK, "Categories retrieved successfully", responses)
 }
 

@@ -5,10 +5,12 @@ import (
 	"net/http"
 	"strconv"
 	"time"
-	"walletwise/internal/middleware"
+
+	"go.uber.org/zap"
 
 	savingGoalService "walletwise/internal/application/saving_goal"
 	savingGoalDomain "walletwise/internal/domain/saving_goal"
+	"walletwise/internal/middleware"
 )
 
 type CreateGoalRequest struct {
@@ -44,26 +46,46 @@ type GoalResponse struct {
 }
 
 type SavingGoalHandler struct {
-	svc *savingGoalService.Service
+	svc    *savingGoalService.Service
+	logger *zap.Logger
 }
 
 type SavingGoalsHandler = SavingGoalHandler
 
 func NewSavingGoalHandler(svc *savingGoalService.Service) *SavingGoalHandler {
-	return &SavingGoalHandler{svc: svc}
+	return &SavingGoalHandler{
+		svc:    svc,
+		logger: zap.L(),
+	}
 }
 
 func (h *SavingGoalHandler) CreateGoal(w http.ResponseWriter, r *http.Request) {
 	var req CreateGoalRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Warn("Failed to decode create saving goal request", zap.Error(err))
 		WriteJSON(w, http.StatusBadRequest, "Invalid request payload", nil)
 		return
 	}
 
+	if req.UserID == 0 {
+		userIdCtx := r.Context().Value(middleware.UserIdKey)
+		if userId, ok := userIdCtx.(uint64); ok && userId > 0 {
+			req.UserID = userId
+		}
+	}
+
 	if req.UserID == 0 || req.Name == "" {
+		h.logger.Warn("Create saving goal validation failed: missing required fields",
+			zap.Uint64("UserId", req.UserID),
+			zap.String("name", req.Name))
 		WriteJSON(w, http.StatusBadRequest, "user_id and name are required", nil)
 		return
 	}
+
+	h.logger.Debug("Creating saving goal",
+		zap.Uint64("UserId", req.UserID),
+		zap.String("name", req.Name),
+		zap.Int64("TargetAmount", req.TargetAmount))
 
 	input := &savingGoalService.SgInput{
 		UserID:        savingGoalDomain.UserID(req.UserID),
@@ -77,10 +99,18 @@ func (h *SavingGoalHandler) CreateGoal(w http.ResponseWriter, r *http.Request) {
 
 	sg, err := h.svc.CreateGoal(r.Context(), input)
 	if err != nil {
+		h.logger.Error("Failed to create saving goal",
+			zap.Error(err),
+			zap.Uint64("UserId", req.UserID),
+			zap.String("name", req.Name))
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
+	h.logger.Info("Saving goal created successfully",
+		zap.Uint64("GoalId", uint64(sg.ID())),
+		zap.Uint64("UserId", uint64(sg.UserID())),
+		zap.String("name", sg.Name()))
 	WriteJSON(w, http.StatusCreated, "Saving goal created successfully", toGoalResponse(sg))
 }
 
@@ -88,11 +118,18 @@ func (h *SavingGoalHandler) GetAllGoals(w http.ResponseWriter, r *http.Request) 
 	userIdCtx := r.Context().Value(middleware.UserIdKey)
 	userId, ok := userIdCtx.(uint64)
 	if !ok {
-		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+		h.logger.Warn("Unauthorized get all goals: invalid user session")
+		WriteJSON(w, http.StatusUnauthorized, "Unauthorized: Invalid user session", nil)
+		return
 	}
+
+	h.logger.Debug("Fetching all saving goals", zap.Uint64("UserId", userId))
 
 	goals, err := h.svc.GetAllGoals(r.Context(), savingGoalDomain.UserID(userId))
 	if err != nil {
+		h.logger.Error("Failed to get saving goals",
+			zap.Error(err),
+			zap.Uint64("UserId", userId))
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
@@ -102,6 +139,9 @@ func (h *SavingGoalHandler) GetAllGoals(w http.ResponseWriter, r *http.Request) 
 		responses = append(responses, toGoalResponse(sg))
 	}
 
+	h.logger.Debug("Saving goals retrieved successfully",
+		zap.Uint64("UserId", userId),
+		zap.Int("count", len(responses)))
 	WriteJSON(w, http.StatusOK, "Saving goals retrieved successfully", responses)
 }
 
@@ -109,23 +149,39 @@ func (h *SavingGoalHandler) GetGoalByID(w http.ResponseWriter, r *http.Request) 
 	userIdCtx := r.Context().Value(middleware.UserIdKey)
 	userId, ok := userIdCtx.(uint64)
 	if !ok {
-		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+		h.logger.Warn("Unauthorized get goal by ID: invalid user session")
+		WriteJSON(w, http.StatusUnauthorized, "Unauthorized: Invalid user session", nil)
+		return
 	}
 	idStr := r.PathValue("id")
 
 	id, err1 := strconv.ParseUint(idStr, 10, 64)
-
 	if err1 != nil {
+		h.logger.Warn("Invalid goal ID format",
+			zap.Error(err1),
+			zap.String("id", idStr),
+			zap.Uint64("UserId", userId))
 		WriteJSON(w, http.StatusBadRequest, "Invalid goal ID or user ID format", nil)
 		return
 	}
 
+	h.logger.Debug("Fetching saving goal by ID",
+		zap.Uint64("GoalId", id),
+		zap.Uint64("UserId", userId))
+
 	sg, err := h.svc.GetGoalByID(r.Context(), savingGoalDomain.SavingGoalID(id), savingGoalDomain.UserID(userId))
 	if err != nil {
+		h.logger.Warn("Saving goal not found",
+			zap.Error(err),
+			zap.Uint64("GoalId", id),
+			zap.Uint64("UserId", userId))
 		WriteJSON(w, http.StatusNotFound, "Saving goal not found", nil)
 		return
 	}
 
+	h.logger.Debug("Saving goal retrieved successfully",
+		zap.Uint64("GoalId", id),
+		zap.Uint64("UserId", userId))
 	WriteJSON(w, http.StatusOK, "Saving goal retrieved successfully", toGoalResponse(sg))
 }
 
@@ -133,21 +189,35 @@ func (h *SavingGoalHandler) UpdateGoal(w http.ResponseWriter, r *http.Request) {
 	userIdCtx := r.Context().Value(middleware.UserIdKey)
 	userId, ok := userIdCtx.(uint64)
 	if !ok {
-		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+		h.logger.Warn("Unauthorized update goal: invalid user session")
+		WriteJSON(w, http.StatusUnauthorized, "Unauthorized: Invalid user session", nil)
+		return
 	}
 
 	idStr := r.PathValue("id")
 	id, err1 := strconv.ParseUint(idStr, 10, 64)
 	if err1 != nil {
+		h.logger.Warn("Invalid goal ID format for update",
+			zap.Error(err1),
+			zap.String("id", idStr),
+			zap.Uint64("UserId", userId))
 		WriteJSON(w, http.StatusBadRequest, "Invalid goal ID or user ID format", nil)
 		return
 	}
 
 	var req UpdateGoalRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Warn("Failed to decode update saving goal request",
+			zap.Error(err),
+			zap.Uint64("GoalId", id),
+			zap.Uint64("UserId", userId))
 		WriteJSON(w, http.StatusBadRequest, "Invalid request payload", nil)
 		return
 	}
+
+	h.logger.Debug("Updating saving goal",
+		zap.Uint64("GoalId", id),
+		zap.Uint64("UserId", userId))
 
 	input := &savingGoalService.SgUpdate{
 		GoalID:        savingGoalDomain.SavingGoalID(id),
@@ -162,10 +232,17 @@ func (h *SavingGoalHandler) UpdateGoal(w http.ResponseWriter, r *http.Request) {
 
 	sg, err := h.svc.UpdateGoal(r.Context(), input, savingGoalDomain.UserID(userId))
 	if err != nil {
+		h.logger.Error("Failed to update saving goal",
+			zap.Error(err),
+			zap.Uint64("GoalId", id),
+			zap.Uint64("UserId", userId))
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
+	h.logger.Info("Saving goal updated successfully",
+		zap.Uint64("GoalId", id),
+		zap.Uint64("UserId", userId))
 	WriteJSON(w, http.StatusOK, "Saving goal updated successfully", toGoalResponse(sg))
 }
 
@@ -173,22 +250,39 @@ func (h *SavingGoalHandler) DeleteGoal(w http.ResponseWriter, r *http.Request) {
 	userIdCtx := r.Context().Value(middleware.UserIdKey)
 	userId, ok := userIdCtx.(uint64)
 	if !ok {
-		WriteJSON(w, http.StatusBadRequest, "Unauthorized: Invalid user session", nil)
+		h.logger.Warn("Unauthorized delete goal: invalid user session")
+		WriteJSON(w, http.StatusUnauthorized, "Unauthorized: Invalid user session", nil)
+		return
 	}
 
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
+		h.logger.Warn("Invalid goal ID format for deletion",
+			zap.Error(err),
+			zap.String("id", idStr),
+			zap.Uint64("UserId", userId))
 		WriteJSON(w, http.StatusBadRequest, "Invalid goal ID format", nil)
 		return
 	}
 
+	h.logger.Debug("Deleting saving goal",
+		zap.Uint64("GoalId", id),
+		zap.Uint64("UserId", userId))
+
 	err = h.svc.DeleteGoal(r.Context(), savingGoalDomain.SavingGoalID(id), savingGoalDomain.UserID(userId))
 	if err != nil {
+		h.logger.Error("Failed to delete saving goal",
+			zap.Error(err),
+			zap.Uint64("GoalId", id),
+			zap.Uint64("UserId", userId))
 		WriteJSON(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
+	h.logger.Info("Saving goal deleted successfully",
+		zap.Uint64("GoalId", id),
+		zap.Uint64("UserId", userId))
 	WriteJSON(w, http.StatusOK, "Saving goal deleted successfully", nil)
 }
 
